@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.orchard-workspace"
+          path="/org/gnome/shell/extensions/orchard-workspace/">
+    <key name="active-monitor-only" type="b">
+      <default>true</default>
+      <summary>Switch only the active display</summary>
+      <description>When disabled, GNOME switches all displays together.</description>
+    </key>
+    <key name="switch-active-display-previous" type="as">
+      <default><![CDATA[['<Control><Super>Up']]]></default>
+      <summary>Previous workspace</summary>
+    </key>
+    <key name="switch-active-display-next" type="as">
+      <default><![CDATA[['<Control><Super>Down']]]></default>
+      <summary>Next workspace</summary>
+    </key>
+  </schema>
+</schemalist>

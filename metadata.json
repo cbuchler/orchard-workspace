@@ -1,0 +1,7 @@
+{
+  "uuid": "orchard-workspace@cbuchler.github.io",
+  "name": "Orchard Workspace",
+  "description": "Switch workspaces on the active display or all displays",
+  "shell-version": ["51"],
+  "settings-schema": "org.gnome.shell.extensions.orchard-workspace"
+}
