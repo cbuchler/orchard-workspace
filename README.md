@@ -1,58 +1,49 @@
 # Orchard Workspace
 
-A GNOME Shell 51 extension that gives each display its own logical workspace order. Switch workspaces on the display under the pointer while keeping other displays in place, or switch all displays together using GNOME's normal behavior.
+A GNOME Shell 51 extension for switching workspaces on one display at a time. Move the pointer to a display and switch workspaces; the other displays stay in place. You can also switch all displays together.
 
-Orchard is derived from [Active Monitor Workspaces](https://github.com/IndyDevGuy/active-monitor-workspaces). It adds per-display workspace creation, temporary fullscreen workspaces, and integration with GNOME's desktop gestures and overview.
+Orchard builds on [Active Monitor Workspaces](https://github.com/IndyDevGuy/active-monitor-workspaces). It lets you add workspaces to each display, gives fullscreen windows temporary workspaces, and works with GNOME's desktop gestures and overview.
+
+## AI disclosure and distribution
+
+This extension was generated with the help of AI models. Because of its AI-generated nature, this project will not be distributed through the GNOME Extensions site (extensions.gnome.org). Follow the build and install instructions below to install it manually.
 
 ## Usage
 
-The extension has one preference, **Switch only the active display**:
+The settings window has one switch, **Switch only the active display**:
 
-- **On**: a workspace gesture changes the display under the pointer while the other displays stay in place.
+- **On**: a workspace gesture switches workspaces on the display under the pointer. Other displays stay in place.
 - **Off**: GNOME switches workspaces on all displays together.
 
-In active-display mode, each clean display starts with one logical workspace.
-**Ctrl+Super+N** adds a workspace to the display under the pointer and switches
-to it. Existing workspaces containing windows on that display are imported so
-that enabling Orchard never merges or hides existing windows.
+With this switch on, each display starts with one workspace unless it already has windows on others. Orchard keeps those occupied workspaces too. Press **Ctrl+Super+N** to add a workspace to the display under the pointer and switch to it.
 
-Fullscreening a normal application window creates a separate temporary workspace
-on its display. Leaving fullscreen returns that window to its original logical
-workspace. Nested fullscreen windows retain their own return destinations. If
-you move the window yourself, Orchard relinquishes its automatic return; if you
-put other windows in its temporary workspace, that workspace is retained.
+When a normal application window enters fullscreen, Orchard gives it a temporary workspace on its display. When it leaves fullscreen, Orchard returns it to its original workspace. If you open another fullscreen window from there, Orchard tracks where each window should return. If you move a window yourself, Orchard stops managing its return. If you put other windows in a temporary workspace, Orchard keeps that workspace.
 
-Desktop and overview gestures follow each display's logical order and stop at
-its first and last slots. The overview also supports mouse-wheel navigation,
-Page Up/Down, thumbnail clicks and window drops. Inactive displays retain their
-workspace contents and thumbnail geometry while another display changes.
-Opening and closing the overview still uses GNOME's normal transition.
+Desktop and overview gestures follow each display's workspace order and stop at the first and last workspace. In the overview, you can also use the mouse wheel, Page Up/Down, thumbnail clicks, and window drops. Other displays keep their windows and thumbnail positions and sizes. The overview opens and closes with GNOME's normal animation.
 
-There is no panel indicator, notification or OSD. **Ctrl+Super+Up/Down** navigate
-the selected display's logical workspaces in active-display mode and GNOME's
-workspaces in all-displays mode. Shortcut bindings can be changed with GSettings.
+Orchard adds no panel indicator, notifications, or on-screen display. **Ctrl+Super+Up/Down** switch workspaces on the selected display when the switch is on, or on all displays when it is off. You can change the shortcuts with GSettings.
 
 | Default shortcut | Action | Where it works |
 | --- | --- | --- |
-| **Ctrl+Super+N** | Add and activate a workspace on the display under the pointer | Desktop and overview; active-display mode only |
+| **Ctrl+Super+N** | Add a workspace on the display under the pointer and switch to it | Desktop and overview; active-display mode only |
 | **Ctrl+Super+Up** | Previous workspace | Desktop |
 | **Ctrl+Super+Down** | Next workspace | Desktop |
 
-The active display is selected by pointer position, rather than the focused window. Fullscreen workspace handling applies to normal application windows in active-display mode; ordinary maximization does not trigger it.
+The pointer selects the active display. Fullscreen workspaces apply to normal application windows when **Switch only the active display** is on. Maximizing a window does not create a workspace.
 
 ## Requirements and limitations
 
-- GNOME Shell 51. This candidate has source-based automated coverage; its new logical lifecycle and projection still require live desktop validation.
-- In GNOME **Settings → Multitasking**, choose **Workspaces on all displays**. Orchard does not change the global fixed/dynamic mode or primary-display setting.
-- Fixed and dynamic workspaces use GNOME's shared physical workspace pool. Orchard exposes independent logical subsets and expands that pool when necessary. In dynamic mode it retains claimed logical slots while GNOME manages unused backing workspaces normally.
-- Disabling Orchard leaves windows and physical workspaces where they currently are. GNOME then resumes its normal workspace policy, including removal of empty dynamic workspaces. Logical slot identities and manually added empty slots are session state and are rebuilt when Orchard is enabled again; occupied workspaces are imported.
-- The extension temporarily wraps private Shell workspace, animation and overview methods and moves normal windows between physical workspaces to preserve inactive displays. Other extensions modifying those methods may conflict. Fullscreen transitions and Orchard shortcuts suppress workspace animations; native external non-gesture activations can still use GNOME's animations.
-- In Kiwi, turn off **Move Window to New Workspace** (`org.gnome.shell.extensions.kiwi` → `move-window-to-new-workspace`) when using Orchard's fullscreen workspaces. Kiwi has its own delayed fullscreen workspace manager: it can move the window again, shift other workspaces and invalidate Orchard's return destination. Kiwi's other features can stay enabled. Orchard does not change Kiwi settings automatically.
-- Disable other copies or derivatives of Active Monitor Workspaces before enabling Orchard.
+- Requires GNOME Shell 51. Automated tests cover the code, but workspace management and overview changes still need testing on a live desktop.
+- In GNOME **Settings → Multitasking**, choose **Workspaces on all displays**. Orchard leaves this setting and your choice of fixed or dynamic workspaces to you.
+- GNOME still has one shared set of workspaces. Orchard gives each display its own list drawn from that set and adds workspaces when needed. In dynamic mode, Orchard keeps the workspaces it uses; GNOME manages the rest.
+- Disabling Orchard leaves windows where they are. GNOME resumes its normal rules and may remove empty dynamic workspaces. Orchard saves its workspace lists only for the current session. When you enable it again, it rebuilds those lists from occupied workspaces; manually added empty workspaces do not persist.
+- Orchard temporarily changes internal Shell methods and moves normal windows between workspaces to keep other displays in place. Extensions that change the same methods may conflict. Orchard skips workspace animations for fullscreen changes and its own shortcuts. Other ways of switching workspaces, apart from gestures, may still use GNOME's animations.
+- If you use Kiwi, turn off **Move Window to New Workspace** (`org.gnome.shell.extensions.kiwi` → `move-window-to-new-workspace`). Kiwi can move a fullscreen window after Orchard has placed it, shift other workspaces, and break the window's return path. You can leave Kiwi's other features on. Orchard does not change Kiwi's settings.
+- Disable other copies or variants of Active Monitor Workspaces before enabling Orchard.
 
 ## Build and install
 
-You need GNOME Shell 51 and the `gnome-extensions` command. The runtime is JavaScript loaded by GNOME Shell; there is no npm dependency installation or bundling step. Node.js is only needed for the tests.
+You need GNOME Shell 51 and the `gnome-extensions` command. GNOME Shell loads the JavaScript directly, so there are no npm packages to install or JavaScript bundles to build. Only the tests need Node.js.
 
 From the repository root:
 
@@ -62,9 +53,9 @@ gnome-extensions pack --force --extra-source=LICENSE --extra-source=shell --out-
 gnome-extensions install dist/orchard-workspace@cbuchler.github.io.shell-extension.zip
 ```
 
-GNOME may need a new login session to discover a manually installed extension on Wayland. Then enable **Orchard Workspace** in the Extensions app and open its settings to choose the switching mode.
+On Wayland, you may need to log out and back in before GNOME finds the extension. Then enable **Orchard Workspace** in the Extensions app and choose the switching mode in its settings.
 
-Alternatively, after GNOME discovers the extension:
+You can also enable it and open its settings from the command line:
 
 ```sh
 gnome-extensions enable orchard-workspace@cbuchler.github.io
@@ -85,7 +76,7 @@ gnome-extensions disable orchard-workspace@cbuchler.github.io
 
 ## Configuration
 
-The preferences window exposes **Switch only the active display**, enabled by default. Shortcut bindings are stored in the extension's GSettings schema. For a standard per-user installation, use its local schema directory when running `gsettings`:
+**Switch only the active display** is on by default. GSettings stores this choice and the shortcuts. For a standard installation in your home directory, point `gsettings` to the extension's schema directory:
 
 ```sh
 orchard_schema_dir="$HOME/.local/share/gnome-shell/extensions/orchard-workspace@cbuchler.github.io/schemas"
@@ -100,22 +91,22 @@ gsettings --schemadir "$orchard_schema_dir" set org.gnome.shell.extensions.orcha
 gsettings --schemadir "$orchard_schema_dir" reset org.gnome.shell.extensions.orchard-workspace add-active-display-workspace
 ```
 
-The remaining keys are `active-monitor-only`, `switch-active-display-previous`, and `switch-active-display-next`. If your installation uses a custom data directory, adjust `orchard_schema_dir` accordingly.
+The other keys are `active-monitor-only`, `switch-active-display-previous`, and `switch-active-display-next`. If you installed Orchard in another data directory, change `orchard_schema_dir` to match.
 
 ## Project structure
 
-| Path | Responsibility |
+| Path | Purpose |
 | --- | --- |
 | `metadata.json` | Extension UUID, supported Shell version, and settings schema |
 | `extension.js` | Activation, keybindings, signals, and cleanup |
 | `prefs.js` | Preferences UI, running in a separate process |
 | `schemas/` | Switching-mode and shortcut defaults |
-| `shell/monitor.js` | Pointer-based display selection and mode checks |
-| `shell/lifecycle.js` | Logical workspaces, fullscreen return destinations, and monitor lifecycle |
-| `shell/switcher.js` | Workspace switching and window movement to preserve inactive displays |
-| `shell/animation.js` | Desktop gesture integration |
-| `shell/overview.js`, `shell/navigation.js` | Overview isolation and navigation |
-| `shell/projections.js`, `shell/thumbnails.js`, `shell/thumbnailGeometry.js` | Logical workspace views, thumbnails, and geometry |
+| `shell/monitor.js` | Selects the display under the pointer and checks the switching mode |
+| `shell/lifecycle.js` | Manages workspace lists, fullscreen return paths, and display connections |
+| `shell/switcher.js` | Switches workspaces and moves windows to keep other displays in place |
+| `shell/animation.js` | Handles desktop gestures |
+| `shell/overview.js`, `shell/navigation.js` | Keeps each display's overview separate and handles navigation |
+| `shell/projections.js`, `shell/thumbnails.js`, `shell/thumbnailGeometry.js` | Shows each display's workspaces and sizes and positions its thumbnails |
 | `shell/methodOverrides.js` | Temporary Shell method overrides and restoration |
 | `tests/` | Node.js tests with simulated GNOME actors and windows |
 | `dist/` | Generated extension ZIPs; ignored by Git |
@@ -130,7 +121,7 @@ node tests/method-overrides.cjs
 node tests/overview-isolation.cjs
 ```
 
-The following also need GNOME Shell 51 JavaScript sources. By default, they extract those sources using `/usr/bin/gresource` from `/usr/lib/gnome-shell/libshell-51.so`:
+These tests also need GNOME Shell 51 source files. By default, they use `/usr/bin/gresource` to extract the files from `/usr/lib/gnome-shell/libshell-51.so`:
 
 ```sh
 node tests/gesture-animation.cjs
@@ -138,7 +129,7 @@ node tests/overview-native-scroll.cjs
 node tests/overview-navigation.cjs
 ```
 
-The gesture and native overview tests extract code from the installed GNOME 51 Shell library. To use already extracted copies, set these variables to their source file paths:
+To use files you have already extracted, set these variables to their paths:
 
 | Variable | GNOME Shell source |
 | --- | --- |
@@ -149,7 +140,7 @@ The gesture and native overview tests extract code from the installed GNOME 51 S
 | `ORCHARD_THUMBNAIL_SOURCE` | `workspaceThumbnail.js` |
 | `ORCHARD_SWIPE_SOURCE` | `swipeTracker.js` |
 
-The lifecycle and thumbnail suites require explicit source paths. On a system with the library above, extract the files to a temporary directory and run:
+The lifecycle and thumbnail tests need you to set the source paths. If you have the library above, extract the files to a temporary directory and run:
 
 ```sh
 orchard_test_sources=$(mktemp -d)
@@ -163,25 +154,17 @@ node tests/overview-thumbnails.cjs
 node tests/overview-dynamic-geometry.cjs
 ```
 
-Use a `gresource` build with ELF support to extract from the Shell library; the examples explicitly use the system binary because other installations can lack that support. On other systems, supply extracted GNOME 51 files through the variables above instead. `tests/runtime-source.cjs` is a shared loader, not a standalone test.
+Extracting files from the Shell library requires `gresource` with ELF support. The examples use the system binary because other builds may lack it. On other systems, use the variables above to supply extracted GNOME 51 files. The tests share `tests/runtime-source.cjs` to load the extension code; it is not a test itself.
 
-The tests use simulated actors and windows; they are not a live desktop or visual test.
+The tests use simulated actors and windows. They do not check the appearance or behavior of a live desktop.
 
-The thumbnail test uses extracted GNOME 51 `workspaceThumbnail.js` and
-`windowManager.js` sources supplied through the two environment variables above.
-The navigation test also uses installed GNOME `workspacesView.js`, `windowManager.js`,
-`workspaceThumbnail.js`, and `swipeTracker.js` methods to exercise logical seam
-progression, allocation, cancellation, dynamic membership, and teardown.
-The dynamic geometry test runs native workspace creation/pruning and thumbnail
-allocation/lifecycle code for the primary-last-slot and secondary-first-swipe
-cases, including constrained widths, clicks, drops, and animation cleanup.
-The lifecycle test covers clean one-slot initialization, independent expansion,
-fixed/dynamic retention, nested fullscreen return, user moves, connector hotplug,
-unmanaged windows and cleanup. Native projection tests cover one-slot sizing,
-logical gesture targets, physical pool changes and DND insertion.
-Runtime Shell modules live in `shell/`; `extension.js` owns extension activation
-and cleanup, and `prefs.js` runs separately in the preferences process.
+The tests cover:
+
+- Workspace creation on each display, fixed and dynamic workspaces, fullscreen return paths, manual window moves, display connection changes, and cleanup.
+- Overview navigation across workspace boundaries, gesture cancellation, workspace changes, and view sizing.
+- Thumbnail positions and sizes as GNOME adds or removes workspaces, including narrow layouts, clicks, window drops, and animation cleanup.
+- Gesture targets and adding workspaces by dragging windows into the overview.
 
 ## Attribution
 
-This extension derives from [Active Monitor Workspaces](https://github.com/IndyDevGuy/active-monitor-workspaces), which itself includes work from [gnome-shell-extension-simulate-switching-workspaces-on-active-monitor](https://github.com/micheledaros/gnome-shell-extension-simulate-switching-workspaces-on-active-monitor). The original copyright notices and MIT license are preserved in [LICENSE](LICENSE).
+Orchard builds on [Active Monitor Workspaces](https://github.com/IndyDevGuy/active-monitor-workspaces), which includes work from [gnome-shell-extension-simulate-switching-workspaces-on-active-monitor](https://github.com/micheledaros/gnome-shell-extension-simulate-switching-workspaces-on-active-monitor). See [LICENSE](LICENSE) for the MIT license and original copyright notices.
