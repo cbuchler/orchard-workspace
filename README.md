@@ -4,6 +4,10 @@ A GNOME Shell 51 extension for switching workspaces on one display at a time. Mo
 
 Orchard builds on [Active Monitor Workspaces](https://github.com/IndyDevGuy/active-monitor-workspaces). It lets you add workspaces to each display, gives fullscreen windows temporary workspaces, and works with GNOME's desktop gestures and overview.
 
+## Project status
+
+Only a basic version with basic testing has been completed. The extension is still at an early stage. It needs more testing on live desktops, across display setups, and alongside other extensions.
+
 ## AI disclosure and distribution
 
 This extension was generated with the help of AI models. Because of its AI-generated nature, this project will not be distributed through the GNOME Extensions site (extensions.gnome.org). Follow the build and install instructions below to install it manually.
@@ -164,6 +168,14 @@ The tests cover:
 - Overview navigation across workspace boundaries, gesture cancellation, workspace changes, and view sizing.
 - Thumbnail positions and sizes as GNOME adds or removes workspaces, including narrow layouts, clicks, window drops, and animation cleanup.
 - Gesture targets and adding workspaces by dragging windows into the overview.
+
+## Contributing, feature requests, and bugs
+
+Use [GitHub Issues](https://github.com/cbuchler/orchard-workspace/issues) to report bugs, request features, or discuss a contribution. Search existing issues first. If one covers your topic, add your findings there.
+
+- **Bugs:** Include steps to reproduce the problem, what you expected, and what happened. Add your GNOME Shell version, Linux distribution, session type (Wayland or X11), display setup, workspace settings, and relevant extensions. Include logs or screenshots when they help.
+- **Feature requests:** Describe the problem you want to solve and how the proposed feature would help.
+- **Contributions:** Open an issue to discuss the change before starting work. Keep pull requests focused, link the issue, and describe what changed and how you tested it. Run the relevant tests and note any live desktop checks or testing gaps. Update the documentation when behavior changes.
 
 ## Attribution
 
