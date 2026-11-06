@@ -7,6 +7,10 @@
       <summary>Switch only the active display</summary>
       <description>When disabled, GNOME switches all displays together.</description>
     </key>
+    <key name="add-active-display-workspace" type="as">
+      <default><![CDATA[['<Control><Super>n']]]></default>
+      <summary>Add workspace on active display</summary>
+    </key>
     <key name="switch-active-display-previous" type="as">
       <default><![CDATA[['<Control><Super>Up']]]></default>
       <summary>Previous workspace</summary>

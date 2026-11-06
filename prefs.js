@@ -1,3 +1,7 @@
+// Generated with AI for personal use.
+// Do NOT upload to extensions.gnome.org (EGO) unless you understand JavaScript
+// and can maintain this code.
+
 /* SPDX-License-Identifier: MIT */
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';

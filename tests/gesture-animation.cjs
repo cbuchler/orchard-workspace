@@ -16,12 +16,10 @@ const nativeSource = shellSource.slice(shellSource.indexOf('export const Monitor
     .replace('export const MonitorGroup', 'const MonitorGroup')
     .replace('export class WorkspaceAnimationController', 'class WorkspaceAnimationController');
 assert(nativeSource.includes('class WorkspaceAnimationController'));
-const extensionSource = fs.readFileSync('extension.js', 'utf8')
-    .replace(/^import .*;\s*$/gm, '')
-    .replace('export default class SwitchWorkspacesExtension', 'class SwitchWorkspacesExtension');
+const extensionSource = require('./runtime-source.cjs')();
 
 function setup({selected = 1, primary = 0, vertical = false, rtl = false, primaryOnly = false, activeOnly = true,
-    hook = true, failSignal = false, missingContainer = false} = {}) {
+    hook = true, failSignal = false, missingContainer = false, logicalIndices = null} = {}) {
     let nextId = 0;
     class Signals {
         constructor() { this.signals = new Map(); }
@@ -135,7 +133,10 @@ function setup({selected = 1, primary = 0, vertical = false, rtl = false, primar
     const animation = new ctx.Animation(controller, {
         conditionallyEnableAutomaticSwitching() {},
         automaticSwitchingIsEnabled: () => !primaryOnly && activeOnly,
-    }, {resolve: () => state.selected});
+    }, {resolve: () => state.selected}, logicalIndices ? {
+        workspaces: () => workspaces,
+        orderForMonitor: () => ({workspaces: logicalIndices.map(index => workspaces[index])}),
+    } : null);
     if (hook) animation.enable();
     const tracker = controller._swipeTracker;
     const begin = (monitor = selected) => tracker.emit('begin', monitor);
@@ -285,3 +286,34 @@ for (const options of [{failSignal: true}, {missingContainer: true}]) {
     t.update(0.5); t.end(1); t.tick(1); t.clean();
 }
 console.log('PASS: compatibility fallback, partial-signal rollback, primary-only mode and later extension hooks');
+
+// Logical stacks may use only a subset of the global pool and may wrap its
+// physical ordering. Native MonitorGroup must expose exactly those snap points.
+for (const primary of [0, 1]) for (const selected of [0, 1]) {
+    const one = setup({primary, selected, logicalIndices: [0]});
+    one.begin();
+    assert.equal(one.state.confirmations.at(-1)[1].length, 1);
+    one.end(0); one.tick(1); one.clean(); one.animation.destroy();
+    for (const logicalIndices of [[0, 2], [2, 0, 1]]) {
+        const t = setup({primary, selected, logicalIndices});
+        t.begin();
+        const points = t.state.confirmations.at(-1)[1];
+        assert.equal(points.length, logicalIndices.length);
+        const before = t.painted(t.groups()[1 - selected]);
+        const target = points[logicalIndices.indexOf(2)];
+        t.update(target / 2);
+        assert.deepEqual(t.painted(t.groups()[1 - selected]), before);
+        t.state.selected = 1 - selected;
+        t.end(target); t.tick(0.5);
+        assert.deepEqual(t.painted(t.groups()[1 - selected]), before);
+        t.tick(1);
+        assert.equal(t.state.active, 2, 'native completion resolves logical slot to physical identity');
+        assert.equal(t.state.compensationMonitor, selected);
+        t.clean(); t.animation.destroy();
+    }
+    const cancel = setup({primary, selected, logicalIndices: [0, 2]});
+    cancel.begin(); cancel.update(0.4); cancel.animation.destroy();
+    cancel.tick(1); cancel.end(1);
+    assert.equal(cancel.state.active, 0); cancel.clean();
+}
+console.log('PASS: desktop logical subset/single-slot/cyclic ordering, native snap targets, pointer lock and disable cancellation');

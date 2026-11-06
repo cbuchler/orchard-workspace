@@ -1,9 +1,7 @@
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
-let source = fs.readFileSync('extension.js', 'utf8')
-    .replace(/^import .*;\s*$/gm, '')
-    .replace('export default class SwitchWorkspacesExtension', 'class SwitchWorkspacesExtension');
+let source = require('./runtime-source.cjs')();
 source += '\nthis.WorkspaceSwitcher = WorkspaceSwitcher; this.ConfigurationService = ConfigurationService; this.MonitorResolver = MonitorResolver;';
 let activeOnly = true;
 let primaryOnly = false;
@@ -91,3 +89,27 @@ assert.equal(pinned.workspace, pinnedBefore);
 primaryOnly = true; config.conditionallyEnableAutomaticSwitching();
 assert.equal(config.automaticSwitchingIsEnabled(), false);
 console.log('PASS: pointer selection, gestures, dynamic renumbering, both modes, and shortcuts');
+
+// During overview navigation the monitor selected at gesture start wins even
+// if the pointer has since crossed displays. Refresh the pinned overview view
+// only after windows have been compensated.
+{
+    windows.length = 0;
+    workspaces = [makeWorkspace(), makeWorkspace()]; current = workspaces[0];
+    primaryOnly = false; activeOnly = true; config.conditionallyEnableAutomaticSwitching();
+    pointer = [10, 10];
+    const p = makeWindow(0, workspaces[0]);
+    const s = makeWindow(1, workspaces[0]);
+    let syncs = 0;
+    const overview = {selectedMonitor: 1, shiftWorkspaceOrder() {},
+        moveWithoutPreviewAnimation(_window, _target, move) { return move(); }, syncActiveWorkspace() {
+        syncs++;
+        assert.equal(p.workspace, current, 'overview synchronizes after window compensation');
+    }};
+    const controller = new ctx.WorkspaceSwitcher(config, resolver, {selectedMonitor: null}, overview);
+    current = workspaces[1]; controller.onGlobalWorkspaceChanged();
+    assert.equal(p.workspace, current);
+    assert.equal(s.workspace, workspaces[0]);
+    assert.equal(syncs, 1);
+}
+console.log('PASS: overview selection stays locked through window compensation');
