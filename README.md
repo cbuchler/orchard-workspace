@@ -41,7 +41,9 @@ The pointer selects the active display. Fullscreen workspaces apply to normal ap
 - In GNOME **Settings → Multitasking**, choose **Workspaces on all displays**. Orchard leaves this setting and your choice of fixed or dynamic workspaces to you.
 - GNOME still has one shared set of workspaces. Orchard gives each display its own list drawn from that set and adds workspaces when needed. In dynamic mode, Orchard keeps the workspaces it uses; GNOME manages the rest.
 - Disabling Orchard leaves windows where they are. GNOME resumes its normal rules and may remove empty dynamic workspaces. Orchard saves its workspace lists only for the current session. When you enable it again, it rebuilds those lists from occupied workspaces; manually added empty workspaces do not persist.
-- Orchard temporarily changes internal Shell methods and moves normal windows between workspaces to keep other displays in place. Extensions that change the same methods may conflict. Orchard skips workspace animations for fullscreen changes and its own shortcuts. Other ways of switching workspaces, apart from gestures, may still use GNOME's animations.
+- Orchard temporarily changes internal Shell methods and moves normal windows between workspaces to keep other displays in place. Extensions that change the same methods may conflict. Orchard skips workspace animations for fullscreen changes and its own active-display shortcuts. Native workspace shortcuts and all-display switching can still animate.
+- Animated keyboard switches can be interrupted by another switch without resetting the slide. Orchard keeps the current position and velocity, then settles at the new destination. It prepares the current workspace pool for the animation, so displays with many workspaces require more temporary window clones.
+- In active-display mode, an animated keyboard switch keeps the other displays stationary. The selected display stays locked until that slide finishes, even if the pointer crosses to another display during rapid key presses.
 - If you use Kiwi, turn off **Move Window to New Workspace** (`org.gnome.shell.extensions.kiwi` → `move-window-to-new-workspace`). Kiwi can move a fullscreen window after Orchard has placed it, shift other workspaces, and break the window's return path. You can leave Kiwi's other features on. Orchard does not change Kiwi's settings.
 - Disable other copies or variants of Active Monitor Workspaces before enabling Orchard.
 
@@ -109,6 +111,7 @@ The other keys are `active-monitor-only`, `switch-active-display-previous`, and 
 | `shell/lifecycle.js` | Manages workspace lists, fullscreen return paths, and display connections |
 | `shell/switcher.js` | Switches workspaces and moves windows to keep other displays in place |
 | `shell/animation.js` | Handles desktop gestures |
+| `shell/keyboardAnimation.js` | Retargets interrupted keyboard animations and cleans up their actors |
 | `shell/overview.js`, `shell/navigation.js` | Keeps each display's overview separate and handles navigation |
 | `shell/projections.js`, `shell/thumbnails.js`, `shell/thumbnailGeometry.js` | Shows each display's workspaces and sizes and positions its thumbnails |
 | `shell/methodOverrides.js` | Temporary Shell method overrides and restoration |
@@ -168,6 +171,8 @@ The tests cover:
 - Overview navigation across workspace boundaries, gesture cancellation, workspace changes, and view sizing.
 - Thumbnail positions and sizes as GNOME adds or removes workspaces, including narrow layouts, clicks, window drops, and animation cleanup.
 - Gesture targets and adding workspaces by dragging windows into the overview.
+- Keyboard switch interruption in Mutter's kill-then-switch order, repeated taps, direction reversals, position and velocity continuity, deferred cleanup, and cancellation on disable or display changes.
+- Hidden windows staying hidden on inactive displays throughout repeated keyboard switches, stationary snapshots, and display selection staying fixed until the slide finishes.
 
 ## Contributing, feature requests, and bugs
 

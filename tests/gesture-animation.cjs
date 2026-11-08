@@ -19,7 +19,7 @@ assert(nativeSource.includes('class WorkspaceAnimationController'));
 const extensionSource = require('./runtime-source.cjs')();
 
 function setup({selected = 1, primary = 0, vertical = false, rtl = false, primaryOnly = false, activeOnly = true,
-    hook = true, failSignal = false, missingContainer = false, logicalIndices = null} = {}) {
+    fixtures = [], animationTime = 250, hook = true, failSignal = false, missingContainer = false, logicalIndices = null} = {}) {
     let nextId = 0;
     class Signals {
         constructor() { this.signals = new Map(); }
@@ -39,6 +39,22 @@ function setup({selected = 1, primary = 0, vertical = false, rtl = false, primar
         notify(name) { this.emit(`notify::${name}`); }
     }
     const pending = new Map();
+    const idles = new Map();
+    const timelines = new Set();
+    class Timeline extends Signals {
+        constructor({duration}) { super(); this.duration = duration; this.elapsed = 0; }
+        start() { timelines.add(this); }
+        stop() { timelines.delete(this); }
+        get_elapsed_time() { return this.elapsed; }
+        advance(ms) {
+            this.elapsed = Math.min(this.duration, this.elapsed + ms);
+            this.emit('new-frame', this.elapsed);
+            if (this.elapsed === this.duration && timelines.has(this)) {
+                timelines.delete(this);
+                this.emit('completed');
+            }
+        }
+    }
     class Actor extends Signals {
         constructor(props = {}) {
             super();
@@ -64,7 +80,7 @@ function setup({selected = 1, primary = 0, vertical = false, rtl = false, primar
     }
     const state = {active: 0, selected, blocks: 0, grabs: 0, unredirect: 0, changes: 0,
         confirmations: [], errors: [], compensationMonitor: null};
-    const workspaces = Array.from({length: 3}, (_, index) => ({
+    const workspaces = Array.from({length: 4}, (_, index) => ({
         index: () => index, list_windows: () => [],
         get active() { return state.active === index; },
         activate() {
@@ -93,12 +109,15 @@ function setup({selected = 1, primary = 0, vertical = false, rtl = false, primar
         confirmSwipe(...args) { state.confirmations.push(args); }
     }
     const ctx = vm.createContext({
-        Extension: class {}, Main,
+        Extension: class {}, Main, adjustAnimationTime: () => animationTime,
         logError: error => state.errors.push(error),
-        Clutter: {Actor, get_default_text_direction: () => rtl ? 1 : 0,
+        Clutter: {Actor, Timeline, get_default_text_direction: () => rtl ? 1 : 0,
             get_current_event_time: () => 123,
             Orientation: {HORIZONTAL: 0, VERTICAL: 1}, TextDirection: {RTL: 1},
             EventPhase: {CAPTURE: 0}, AnimationMode: {EASE_OUT_CUBIC: 0}},
+        GLib: {PRIORITY_DEFAULT_IDLE: 200, SOURCE_REMOVE: false,
+            idle_add(_priority, callback) { const id = ++nextId; idles.set(id, callback); return id; },
+            source_remove(id) { assert(idles.delete(id)); }},
         Shell: {ActionMode: {NORMAL: 1}}, St: {Widget: Actor,
             ThemeContext: {get_for_stage: () => ({scale_factor: 1})}},
         GObject: {ParamSpec: {double() {}}, ParamFlags: {READWRITE: 1},
@@ -109,10 +128,16 @@ function setup({selected = 1, primary = 0, vertical = false, rtl = false, primar
                     constructor(...params) { super(); this._init(...params); }
                 };
             }},
-        Meta: {prefs_get_workspaces_only_on_primary: () => primaryOnly},
+        Meta: {MotionDirection: {UP: 0, DOWN: 1, LEFT: 2, RIGHT: 3,
+            UP_LEFT: 4, UP_RIGHT: 5, DOWN_LEFT: 6, DOWN_RIGHT: 7},
+            prefs_get_workspaces_only_on_primary: () => primaryOnly},
         Layout: {MonitorConstraint: class {}}, SwipeTracker: {SwipeTracker: Tracker},
         WorkspaceGroup: class extends Actor {
-            constructor(workspace) { super(); this.workspace = workspace; }
+            constructor(workspace, monitor) {
+                super(); this.workspace = workspace;
+                this.snapshotWindows = fixtures.filter(w => w.monitor === monitor.index &&
+                    w.workspace === workspace?.index()).map(w => w.id);
+            }
         },
         WORKSPACE_SPACING: 100, WINDOW_ANIMATION_TIME: 250,
         global: {stage: {}, window_group: {}, display: {bind_property() {}},
@@ -165,7 +190,39 @@ function setup({selected = 1, primary = 0, vertical = false, rtl = false, primar
         assert.equal(animation.selectedMonitor, null);
         assert.equal(pending.size, 0);
     };
-    return {state, controller, animation, begin, update, end, tick, groups, painted, clean};
+    const wm = {inProgress: false, completed: 0};
+    const kill = () => {
+        controller.cancelSwitchAnimation();
+        // Shell's kill handler acknowledges Mutter synchronously, separately
+        // from destroying the actors. A replacement gets a new completion.
+        if (wm.inProgress) { wm.completed++; wm.inProgress = false; }
+    };
+    const switchTo = target => {
+        const from = state.active;
+        state.active = target;
+        // Orchard shifts windows on the other monitors before Shell snapshots
+        // them. A retained snapshot of a future destination can become stale.
+        if (activeOnly && !primaryOnly) {
+            const monitor = animation.selectedMonitor ?? state.selected;
+            for (const w of fixtures) if (w.monitor !== monitor)
+                w.workspace = (w.workspace + target - from + workspaces.length) % workspaces.length;
+        }
+        kill();
+        wm.inProgress = true;
+        controller.animateSwitch(from, target,
+            target > from ? ctx.Meta.MotionDirection.RIGHT : ctx.Meta.MotionDirection.LEFT,
+            () => { wm.completed++; wm.inProgress = false; });
+    };
+    const advance = ms => {
+        for (const timeline of [...timelines]) timeline.advance(ms);
+    };
+    const flushIdle = () => {
+        for (const [id, callback] of [...idles]) {
+            idles.delete(id); callback();
+        }
+    };
+    return {state, controller, animation, begin, update, end, tick, groups, painted, clean,
+        wm, kill, switchTo, advance, flushIdle, idles, timelines, workspaces};
 }
 
 // Baseline proves the harness sees the actual all-monitor movement.
@@ -317,3 +374,173 @@ for (const primary of [0, 1]) for (const selected of [0, 1]) {
     assert.equal(cancel.state.active, 0); cancel.clean();
 }
 console.log('PASS: desktop logical subset/single-slot/cyclic ordering, native snap targets, pointer lock and disable cancellation');
+
+// Mutter calls kill immediately before switch. Rebuilding the actors loses
+// the displayed position even though the logical active workspace advanced.
+{
+    const t = setup();
+    t.switchTo(1);
+    const groups = [...t.groups()];
+    t.advance(100); t.tick(0.6);
+    const before = groups.map(t.painted);
+    t.switchTo(2);
+    assert(groups.every((group, i) => group === t.groups()[i] && !group.destroyed),
+        'rapid keyboard switch must reuse the surviving MonitorGroups');
+    assert.deepEqual(Array.from(t.groups(), t.painted), before,
+        'retarget must preserve the displayed position on every monitor');
+    t.advance(300); t.tick(1); t.clean();
+    assert.equal(t.wm.completed, 2, 'each Mutter request is acknowledged exactly once');
+    t.animation.destroy();
+}
+console.log('PASS: keyboard kill-then-switch preserves actors and position');
+
+for (const primary of [0, 1]) for (const vertical of [false, true])
+for (const rtl of [false, true]) for (const activeOnly of [false, true]) {
+    const t = setup({primary, vertical, rtl, activeOnly});
+    t.switchTo(1);
+    const groups = [...t.groups()];
+    t.advance(80);
+    for (const target of [2, 3, 2, 1, 0, 1]) {
+        // Finite differences around the interruption check motion, rather than
+        // reading the implementation's internal velocity field.
+        const before = groups.map(g => g.progress);
+        t.advance(2);
+        const atSwitch = groups.map(g => g.progress);
+        const speed = atSwitch.map((p, i) => (p - before[i]) / 2);
+        t.switchTo(target);
+        assert(groups.every((g, i) => g === t.groups()[i] && !g.destroyed));
+        groups.forEach((g, i) => assert.equal(g.progress, atSwitch[i]));
+        t.advance(2);
+        groups.forEach((g, i) => {
+            const afterSpeed = (g.progress - atSwitch[i]) / 2;
+            assert(Math.abs(afterSpeed - speed[i]) < 0.0015,
+                'velocity must continue across retarget (allow pixel quantization)');
+        });
+        t.advance(40);
+    }
+    for (let i = 0; i < 30 && t.controller._switchData; i++) {
+        groups.forEach(g => {
+            const points = g.getSnapPoints();
+            assert(g.progress >= Math.min(...points) - 0.001);
+            assert(g.progress <= Math.max(...points) + 0.001);
+        });
+        t.advance(10);
+    }
+    t.clean();
+    assert.equal(t.wm.completed, 7);
+    assert.equal(t.idles.size, 0);
+    assert.equal(t.timelines.size, 0);
+    t.animation.destroy();
+}
+console.log('PASS: keyboard triple taps, reversals, velocity continuity, two monitors, vertical/RTL and both modes');
+
+for (const action of ['kill', 'cancel', 'destroy']) {
+    const t = setup(); t.switchTo(1); t.advance(80);
+    const groups = [...t.groups()];
+    const timeline = [...t.timelines][0];
+    if (action === 'kill') {
+        t.kill();
+        assert(groups.every(g => !g.destroyed), 'kill defers only visual cleanup');
+        assert.equal(t.wm.completed, 1, 'Mutter is acknowledged immediately');
+        t.flushIdle();
+    } else t.animation[action]();
+    timeline.emit('new-frame', 200); timeline.emit('completed');
+    t.flushIdle(); t.clean();
+    assert.equal(t.wm.completed, 1);
+    assert.equal(t.controller._swipeTracker.enabled, true);
+    assert.equal(t.idles.size, 0);
+    assert.equal(t.timelines.size, 0);
+    if (action !== 'destroy') t.animation.destroy();
+}
+// Disable during the kill/switch gap must not leave a deferred callback behind.
+{
+    const t = setup(); t.switchTo(1); t.kill(); t.animation.destroy();
+    t.flushIdle(); t.clean(); assert.equal(t.wm.completed, 1);
+}
+// No painted frame yet: retain actors even for back-to-back requests.
+{
+    const t = setup(); t.switchTo(1);
+    const groups = [...t.groups()];
+    t.switchTo(2); t.switchTo(3);
+    assert(groups.every((g, i) => g === t.groups()[i]));
+    t.advance(300); t.clean(); assert.equal(t.wm.completed, 3);
+    t.animation.destroy();
+}
+// Workspace removal invalidates the old snapshot and must fall back cleanly.
+{
+    const t = setup(); t.switchTo(1); t.advance(100);
+    const groups = [...t.groups()];
+    t.workspaces.pop(); t.switchTo(2);
+    assert(groups.every(g => g.destroyed));
+    t.advance(300); t.clean(); assert.equal(t.wm.completed, 2);
+    t.animation.destroy();
+}
+for (const options of [{primaryOnly: true}, {animationTime: 0}, {animationTime: 500}]) {
+    const t = setup(options); t.switchTo(1); t.advance(600);
+    t.clean(); assert.equal(t.wm.completed, 1); t.animation.destroy();
+}
+// A completed/cancelled keyboard session must not interfere with later swipes.
+{
+    const t = setup(); t.switchTo(1); t.advance(300); t.clean();
+    t.begin(); t.update(1.3); t.end(2); t.tick(1); t.clean();
+    t.animation.destroy();
+}
+console.log('PASS: deferred cleanup, disable/hotplug, stale callbacks, immediate repeats, pool changes and gesture handoff');
+
+// Physical two-display regression: an off-screen window on the other monitor
+// must not slide into view from a stale snapshot during the second key press.
+for (const selected of [0, 1]) for (const primary of [0, 1])
+for (const vertical of [false, true]) for (const rtl of [false, true])
+for (const occupied of [false, true]) {
+    const fixtures = [1, 2, 3].map(workspace =>
+        ({id: `hidden-${workspace}`, monitor: 1 - selected, workspace}));
+    if (occupied) fixtures.push({id: 'visible-window', monitor: 1 - selected, workspace: 0});
+    const t = setup({selected, primary, vertical, rtl, fixtures});
+    t.switchTo(1);
+    const other = t.groups().find(g => g.index !== selected);
+    const position = t.painted(other);
+    const checkInactive = () => {
+        const extent = vertical ? other._monitor.height : other._monitor.width;
+        const visible = other._workspaceGroups.filter(g =>
+            Math.abs(other._getWorkspaceGroupProgress(g) - other.progress) * other.baseDistance < extent)
+            .flatMap(g => g.snapshotWindows);
+        assert.deepEqual(Array.from(visible), occupied ? ['visible-window'] : [],
+            'inactive display must retain its original visible window set');
+        assert.deepEqual(t.painted(other), position, 'inactive display remains stationary');
+        assert.equal(other.destroyed, false, 'inactive snapshot survives interruption');
+    };
+    checkInactive();
+    for (const target of [2, 3, 2, 1, 0]) {
+        // Retarget before completion even when motion near an edge shortens
+        // the current animation to preserve its velocity without overshoot.
+        const step = Math.min(16, [...t.timelines][0].duration / 10);
+        for (let frame = 0; frame < 5; frame++) {
+            t.advance(step);
+            checkInactive();
+        }
+        t.switchTo(target);
+        checkInactive();
+    }
+    t.advance(300); t.clean();
+    assert.deepEqual(fixtures.filter(w => w.workspace === t.state.active).map(w => w.id),
+        occupied ? ['visible-window'] : [], 'real window placement agrees after snapshot cleanup');
+    t.animation.destroy();
+}
+console.log('PASS: window snapshot timing, inactive-display content and stationary position');
+
+// Moving the pointer during an interrupted keyboard slide must not change
+// which display Orchard compensates. A later, separate switch may select it.
+{
+    const fixtures = [{id: 'other', monitor: 0, workspace: 1}];
+    const t = setup({selected: 1, fixtures});
+    t.switchTo(1); t.advance(80); t.state.selected = 0;
+    assert.equal(t.animation.selectedMonitor, 1);
+    t.switchTo(2); t.advance(100);
+    assert.equal(fixtures[0].workspace, 3);
+    t.switchTo(0); t.advance(300); t.clean();
+    assert.equal(fixtures[0].workspace, 1);
+    t.switchTo(1);
+    assert.equal(t.animation.selectedMonitor, 0);
+    t.advance(300); t.clean(); t.animation.destroy();
+}
+console.log('PASS: keyboard display selection is locked only for the active slide');

@@ -14,6 +14,7 @@
 
 
 import {MethodOverrides} from './methodOverrides.js';
+import {KeyboardWorkspaceAnimation} from './keyboardAnimation.js';
 
 /* The GNOME Shell gesture integration below is adapted from the source project. */
 export class MonitorWorkspaceAnimation {
@@ -24,6 +25,7 @@ export class MonitorWorkspaceAnimation {
         this._lifecycle = lifecycle;
         this._session = null;
         this._overrides = new MethodOverrides();
+        this._keyboard = new KeyboardWorkspaceAnimation(controller, configurationService, monitorResolver);
     }
 
     enable() {
@@ -38,8 +40,8 @@ export class MonitorWorkspaceAnimation {
                     nativeArgs = [order.workspaces.map(workspace => workspaces.indexOf(workspace))];
             }
             const result = original.apply(this, nativeArgs);
-            // Explicit indices are the non-gesture animateSwitch path. Its
-            // window snapshot timing is different, so leave it to Shell.
+            // Explicit indices are the keyboard path. Its window snapshot
+            // timing is different, so apply monitor pinning only to gestures.
             if (!previous && !args[0] && this._switchData) {
                 animation._configuration.conditionallyEnableAutomaticSwitching();
                 if (animation._configuration.automaticSwitchingIsEnabled()) {
@@ -66,6 +68,7 @@ export class MonitorWorkspaceAnimation {
                 animation._releaseSession();
             return original.call(this, switchData);
         });
+        this._keyboard.enable();
     }
 
     _wrap(name, makeWrapper) {
@@ -104,7 +107,7 @@ export class MonitorWorkspaceAnimation {
     }
 
     get selectedMonitor() {
-        return this._session?.monitorIndex ?? null;
+        return this._session?.monitorIndex ?? this._keyboard.selectedMonitor ?? null;
     }
 
     _releaseSession() {
@@ -123,6 +126,7 @@ export class MonitorWorkspaceAnimation {
     }
 
     cancel() {
+        this._keyboard.cancel();
         const session = this._session;
         if (!session) return;
         if (this._controller._switchData === session.switchData) {
@@ -136,6 +140,7 @@ export class MonitorWorkspaceAnimation {
     }
 
     destroy() {
+        this._keyboard.destroy();
         this.cancel();
         this._overrides.clear();
         this._controller = null;
