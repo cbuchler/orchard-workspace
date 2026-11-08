@@ -8,6 +8,8 @@ Orchard builds on [Active Monitor Workspaces](https://github.com/IndyDevGuy/acti
 
 Only a basic version with basic testing has been completed. The extension is still at an early stage. It needs more testing on live desktops, across display setups, and alongside other extensions.
 
+See the [changelog](CHANGELOG.md) for changes in each release.
+
 ## AI disclosure and distribution
 
 This extension was generated with the help of AI models. Because of its AI-generated nature, this project will not be distributed through the GNOME Extensions site (extensions.gnome.org). Follow the build and install instructions below to install it manually.
