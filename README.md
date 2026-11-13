@@ -23,6 +23,8 @@ The settings window has one switch, **Switch only the active display**:
 
 With this switch on, each display starts with one workspace unless it already has windows on others. Orchard keeps those occupied workspaces too. Press **Ctrl+Super+N** to add a workspace to the display under the pointer and switch to it.
 
+Press **Ctrl+Super+Delete** to remove that display's active empty desktop. Orchard selects the previous desktop, or the next one when removing the first. It keeps at least one desktop and refuses to remove occupied or fullscreen-owned desktops. The shortcut also works in the overview.
+
 When a normal application window enters fullscreen, Orchard gives it a temporary workspace immediately after its originating logical desktop on that display. When it leaves fullscreen, Orchard returns it to its original workspace. If you open another fullscreen window from there, Orchard tracks where each window should return. If you move a window yourself, Orchard stops managing its return. If you put other windows in a temporary workspace, Orchard keeps that workspace.
 
 Desktop and overview gestures follow each display's workspace order and stop at the first and last workspace. In the overview, you can also use the mouse wheel, Page Up/Down, thumbnail clicks, and window drops. Other displays keep their windows and thumbnail positions and sizes. The overview opens and closes with GNOME's normal animation.
@@ -232,10 +234,10 @@ Each case records candidate source hashes, fixture preconditions, window/workspa
 Persistence checks require a candidate with layout persistence:
 
 ```sh
-/usr/bin/python3 tests/live/run.py --case persist-reenable --case persist-new-shell --require-major 51 --output /tmp/orchard-persistence-check
+/usr/bin/python3 tests/live/run.py --case persist-reenable --case persist-offmode --case persist-new-shell --case fullscreen-mode-roundtrip --require-major 51 --output /tmp/orchard-persistence-check
 ```
 
-Both cases compare saved desktop UUID order and selection. Re-enable also checks that existing windows keep their workspace identities and visibility. The new-Shell case terminates only its private compositor and fixture clients, starts another compositor with the same private settings, then creates new clients. It checks that empty desktops and selection survive a fresh Shell process; it does not simulate app session restoration or the user's logout/login. Add `--workspace-mode dynamic` to check restoration alongside native empty-workspace pruning.
+The persistence cases wait for automatic saving, then compare desktop UUID order and selection on both displays. Re-enable also checks that existing windows keep their workspace identities and visibility. The off-mode case enables Orchard in all-displays mode before returning to independent mode; the fullscreen case checks the return path across a mode round-trip. The new-Shell case terminates only its private compositor and fixture clients, starts another compositor with the same private settings, then creates new clients. It checks that empty desktops and selection survive a fresh Shell process; it does not simulate app session restoration or the user's logout/login. Add `--workspace-mode dynamic` to check restoration alongside native empty-workspace pruning.
 
 ## Contributing, feature requests, and bugs
 

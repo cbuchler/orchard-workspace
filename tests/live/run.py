@@ -24,10 +24,10 @@ SHORTCUTS = ['native-right', 'rotated', 'native-number', 'native-last', 'invalid
              'first-boundary', 'last-boundary', 'move-right', 'move-number',
              'move-boundary', 'orchard', 'gesture', 'overview-native',
              'all-displays', 'extension-disabled']
-FULLSCREEN = ['fullscreen-first', 'fullscreen-middle', 'fullscreen-last']
+FULLSCREEN = ['fullscreen-first', 'fullscreen-middle', 'fullscreen-last', 'fullscreen-mode-roundtrip']
 REMOVAL = ['remove-first', 'remove-middle', 'remove-last', 'remove-explicit', 'remove-keyboard',
            'remove-occupied', 'remove-final', 'remove-fullscreen-origin', 'remove-fullscreen-last-origin']
-CASES = SHORTCUTS + FULLSCREEN + REMOVAL + ['persist-reenable', 'persist-new-shell', 'rapid-native', 'restack-arrival', 'interrupted-move', 'interrupted-gesture-move',
+CASES = SHORTCUTS + FULLSCREEN + REMOVAL + ['persist-reenable', 'persist-offmode', 'persist-new-shell', 'rapid-native', 'restack-arrival', 'interrupted-move', 'interrupted-gesture-move',
                                   'overview-move', 'animations-disabled-move']
 HOST_ENDPOINTS = ['DISPLAY', 'XAUTHORITY', 'SESSION_MANAGER', 'GNOME_KEYRING_CONTROL',
                   'SSH_AUTH_SOCK', 'AT_SPI_BUS_ADDRESS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE']
@@ -93,8 +93,10 @@ def validate(case, monitor, before, after, intermediate=None, workspace_mode='fi
 
     if case.startswith('persist-'):
         check(after.get('candidateActive'), 'candidate not active after restart')
-        if case == 'persist-reenable':
+        if case != 'persist-new-shell':
             check(after.get('candidateWasDisabled'), 'candidate did not disable and re-enable')
+            if case == 'persist-offmode':
+                check(after.get('startedInAllDisplays') and after.get('resumedIndependentMode'), 'all-displays startup was not exercised')
         else:
             check(after.get('resumed') and after.get('fixtureReady'), 'fresh Shell observation/fixtures failed')
             check(after.get('fullscreenOwners') == 0, 'fresh Shell restored temporary fullscreen ownership')
@@ -102,8 +104,11 @@ def validate(case, monitor, before, after, intermediate=None, workspace_mode='fi
               after.get('targetSlotIds') == before['targetSlotIds'], 'logical desktop identities/order did not survive re-enable')
         check(after.get('selectedSlotId') == before.get('selectedSlotId'), 'selected desktop identity did not survive re-enable')
         check(after.get('otherSlotIds') == before.get('otherSlotIds'), 'other display layout changed on re-enable')
+        check(before.get('otherSelectedSlotId') and after.get('otherSelectedSlotId') == before['otherSelectedSlotId'],
+              'other display selection did not survive restart')
+        check(before.get('automaticSaveReady'), 'automatic layout save did not settle before restart')
         check(after.get('total') == 0, 're-enable unexpectedly activated a workspace')
-        if case == 'persist-reenable':
+        if case != 'persist-new-shell':
             check(previous and all(w.get('workspaceIdentity') == previous[i].get('workspaceIdentity') and
                   w['visible'] == previous[i]['visible'] for i, w in windows.items()), 're-enable relocated or hid a fixture window')
     elif case in REMOVAL:
@@ -135,10 +140,12 @@ def validate(case, monitor, before, after, intermediate=None, workspace_mode='fi
     elif case.startswith('fullscreen-'):
         phase = intermediate or {}
         fs = phase.get('fullscreen') or {}
-        origin = FULLSCREEN.index(case)
+        origin = 1 if case == 'fullscreen-mode-roundtrip' else FULLSCREEN.index(case)
         check(fs.get('temporaryPosition') == origin + 1, 'fullscreen desktop is not adjacent to origin')
         check(fs.get('originPosition') == origin and fs.get('sameOrigin'), 'fullscreen origin identity changed')
         check(fs.get('unrelatedOrderPreserved'), 'fullscreen reordered unrelated desktops')
+        if case == 'fullscreen-mode-roundtrip':
+            check(phase.get('fullscreenModeRoundtrip'), 'fullscreen mode round-trip was not exercised')
         check(phase.get('otherSlotPreserved') and phase.get('otherSlotActive'), 'fullscreen changed other display selection')
         check(phase.get('windows') and next(w for w in phase['windows'] if w['title'].endswith('0')).get('fullscreen'),
               'real window did not enter fullscreen')
@@ -270,6 +277,14 @@ def worker(args):
             time.sleep(.2)
         raise RuntimeError('Timed out waiting for isolated compositor/fixtures')
 
+    def capture(label):
+        call('Capture', GLib.Variant('(s)', (label,)))
+        state = until(lambda state: label in state.get('captureComplete', []) or state.get('captureErrors'))
+        if state.get('captureErrors'):
+            write_json(root / f'capture-{label}-errors.json', state['captureErrors'])
+            raise RuntimeError('screenshot capture failed: ' + str(state['captureErrors']))
+        return state
+
     children = []
     def stop_children():
         for child in reversed(children):
@@ -318,12 +333,13 @@ def worker(args):
             raise RuntimeError('Wayland fixture placements did not settle')
         call('Prepare')
         time.sleep(1 if args.case in ['overview-native', 'overview-move'] else .3)
+        if args.case.startswith('persist-'):
+            until(lambda state: state.get('automaticSaveReady'))
         before = snapshot()
         write_json(root / 'before.json', before)
         if not before.get('fixtureReady'):
             raise RuntimeError('Fixture preconditions changed after preparation')
-        call('Capture', GLib.Variant('(s)', ('before',)))
-        until(lambda state: 'before' in state.get('captureComplete', []) or state.get('captureErrors'))
+        capture('before')
         if args.case == 'persist-new-shell':
             first_pid = children[0].pid
             stop_children()
@@ -337,20 +353,19 @@ def worker(args):
         else:
             call('Activate')
             time.sleep(1.3)
-        if args.case == 'persist-reenable':
-            until(lambda state: state.get('candidateActive') and state.get('candidateWasDisabled'))
+        if args.case in ['persist-reenable', 'persist-offmode']:
+            until(lambda state: state.get('candidateActive') and state.get('candidateWasDisabled') and
+                  (args.case != 'persist-offmode' or state.get('resumedIndependentMode')))
         intermediate = None
         if args.case.startswith(('fullscreen-', 'remove-fullscreen')):
             intermediate = snapshot()
             write_json(root / 'fullscreen.json', intermediate)
-            call('Capture', GLib.Variant('(s)', ('fullscreen',)))
-            until(lambda state: 'fullscreen' in state.get('captureComplete', []) or state.get('captureErrors'))
+            capture('fullscreen')
             call('ExitFullscreen')
             time.sleep(1.3)
         after = snapshot()
         write_json(root / 'after.json', after)
-        call('Capture', GLib.Variant('(s)', ('after',)))
-        captured = until(lambda state: 'after' in state.get('captureComplete', []) or state.get('captureErrors'))
+        captured = capture('after')
         runtime_log = '\n'.join(path.read_text().split('Shutting down GNOME Shell', 1)[0]
                                 for path in [root / 'shell.log', root / 'restart-shell.log'] if path.exists())
         failures = validate(args.case, args.monitor, before, after, intermediate, args.workspace_mode)

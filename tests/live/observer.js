@@ -29,6 +29,10 @@ export default class Observer extends Extension {
  Snapshot(){
   const manager=global.workspace_manager,state=this.state();
   const order=state?.lifecycle.orderForMonitor(this.monitor);
+  const otherOrder=state?.lifecycle.orderForMonitor(1-this.monitor);
+  const stack=state?.lifecycle.stackForMonitor(this.monitor);
+  const saved=state?.lifecycle.persistence?JSON.parse(state.settings.get_string('logical-layout')||'null'):null;
+  const savedDisplay=saved?.displays.find(display=>display.key===stack?.key&&display.hardware===(stack?.hardware??''));
   const owner=this.windows().find(w=>w.get_title().endsWith('0'));
   const fs=state?.lifecycle.windows.get(owner)?.fullscreen;
   const expected=[0,1,2,3].map(i=>({monitor:i<2?this.monitor:1-this.monitor,
@@ -55,8 +59,14 @@ export default class Observer extends Extension {
    targetOrder:state?.lifecycle.orderForMonitor(this.monitor)?.workspaces.map(ws=>ws.index()),
    targetSlotIds:order?.slots.map(slot=>slot.id),
    selectedSlotId:order?.slots.find(slot=>slot.workspace===manager.get_active_workspace())?.id,
-   otherSlotIds:state?.lifecycle.orderForMonitor(1-this.monitor)?.slots.map(slot=>slot.id),
+   otherSlotIds:otherOrder?.slots.map(slot=>slot.id),
+   otherSelectedSlotId:otherOrder?.slots.find(slot=>slot.workspace===manager.get_active_workspace())?.id,
+   automaticSaveReady:!!savedDisplay&&savedDisplay.slots.length===order?.slots.length&&
+    order.slots.every((slot,i)=>slot.id&&slot.id===savedDisplay.slots[i].id)&&
+    savedDisplay.selected===order.slots.find(slot=>slot.workspace===manager.get_active_workspace())?.id,
    candidateWasDisabled:this.candidateWasDisabled,
+   startedInAllDisplays:this.startedInAllDisplays,resumedIndependentMode:this.resumedIndependentMode,
+   fullscreenModeRoundtrip:this.fullscreenModeRoundtrip,
    resumed:this.resumed,
    targetOrderIdentities:state?.lifecycle.orderForMonitor(this.monitor)?.workspaces.map(ws=>this.identity(ws)),
    otherOrder:state?.lifecycle.orderForMonitor(1-this.monitor)?.workspaces.map(ws=>ws.index()),
@@ -71,7 +81,7 @@ export default class Observer extends Extension {
     visible:w.get_compositor_private()?.visible,onActive:w.located_on_workspace(manager.get_active_workspace()),fullscreen:w.is_fullscreen()})),
    extensions:[...Main.extensionManager._extensions].map(([id,e])=>[id,e.state])});
  }
- EnableCandidate(){global.settings.set_strv('enabled-extensions',['orchard-activation-test@local','orchard-workspace@cbuchler.github.io']);}
+ EnableCandidate(){this.started=true;global.settings.set_strv('enabled-extensions',['orchard-activation-test@local','orchard-workspace@cbuchler.github.io']);}
  Setup(monitor){
   this.monitor=monitor;this.scenario=GLib.getenv('ORCHARD_SHORTCUT_CASE');this.started=false;
   const manager=global.workspace_manager;
@@ -82,7 +92,7 @@ export default class Observer extends Extension {
   }
   while(manager.get_n_workspaces()<4)manager.append_new_workspace(false,global.display.get_current_time_roundtrip());
   this.identities=new Map(Array.from({length:manager.get_n_workspaces()},(_,i)=>[manager.get_workspace_by_index(i),i]));
-  const first=['fullscreen-middle','remove-middle'].includes(this.scenario)?1:['fullscreen-last','remove-last','rotated','last-boundary','persist-reenable','persist-new-shell'].includes(this.scenario)?3:0;
+  const first=['fullscreen-middle','fullscreen-mode-roundtrip','remove-middle'].includes(this.scenario)?1:this.scenario.startsWith('persist-')||['fullscreen-last','remove-last','rotated','last-boundary'].includes(this.scenario)?3:0;
   this.first=first;this.next=first===0?3:0;
   const emptyRemoval=['remove-first','remove-middle','remove-last','remove-explicit','remove-keyboard','remove-final'].includes(this.scenario);
   const neighbor=first===0||first===3?1:0;
@@ -122,7 +132,7 @@ export default class Observer extends Extension {
   state.overview.syncLogicalOrders();
   if(this.scenario.startsWith('persist-')){
    if(!state.lifecycle.persistence)throw new Error('Candidate lacks persistence service');
-   state.lifecycle.persistence.flush();
+   state.lifecycle._changed();
   }
   if(this.setupBlocked){
    const wm=Main.wm;
@@ -166,11 +176,22 @@ export default class Observer extends Extension {
     return GLib.SOURCE_CONTINUE;
    });
    GLib.timeout_add(GLib.PRIORITY_DEFAULT,80,()=>{this.Capture('during');return GLib.SOURCE_REMOVE;});
-   if(this.scenario==='persist-reenable'){
+   if(['persist-reenable','persist-offmode'].includes(this.scenario)){
+    const settings=this.state().settings;
     global.settings.set_strv('enabled-extensions',['orchard-activation-test@local']);
     GLib.timeout_add(GLib.PRIORITY_DEFAULT,100,()=>{
      this.candidateWasDisabled=!this.state();
+     if(this.scenario==='persist-offmode')settings.set_boolean('active-monitor-only',false);
      this.EnableCandidate();
+     if(this.scenario==='persist-offmode'){
+      GLib.timeout_add(GLib.PRIORITY_DEFAULT,50,()=>{
+       const state=this.state();if(!state)return GLib.SOURCE_CONTINUE;
+       this.startedInAllDisplays=!state.configuration.automaticSwitchingIsEnabled();
+       state.settings.set_boolean('active-monitor-only',true);
+       this.resumedIndependentMode=true;
+       return GLib.SOURCE_REMOVE;
+      });
+     }
      return GLib.SOURCE_REMOVE;
     });
    }else if(this.scenario.startsWith('remove-fullscreen')){
@@ -186,6 +207,18 @@ export default class Observer extends Extension {
     else this.removalResult=this.state().lifecycle.removeWorkspace(this.monitor);
    }else if(this.scenario.startsWith('fullscreen-')){
     this.windows().find(w=>w.get_title().endsWith('0')).make_fullscreen();
+    if(this.scenario==='fullscreen-mode-roundtrip'){
+     GLib.timeout_add(GLib.PRIORITY_DEFAULT,150,()=>{
+      const settings=this.state().settings;
+      settings.set_boolean('active-monitor-only',false);
+      GLib.timeout_add(GLib.PRIORITY_DEFAULT,150,()=>{
+       this.fullscreenModeRoundtrip=!settings.get_boolean('active-monitor-only');
+       settings.set_boolean('active-monitor-only',true);
+       return GLib.SOURCE_REMOVE;
+      });
+      return GLib.SOURCE_REMOVE;
+     });
+    }
    }else if(['interrupted-move','interrupted-gesture-move','overview-move','animations-disabled-move'].includes(this.scenario)){
     const controller=Main.wm._workspaceAnimation;
     if(this.scenario==='interrupted-gesture-move'){

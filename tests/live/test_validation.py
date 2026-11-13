@@ -122,9 +122,10 @@ class ValidationTests(unittest.TestCase):
         for window in after['windows']:
             window['workspaceIdentity'] = window['workspace']
         before.update(targetSlotIds=['a', 'b', 'c'], selectedSlotId='c', otherSlotIds=['d', 'e'],
+                      otherSelectedSlotId='d', automaticSaveReady=True,
                       windows=copy.deepcopy(after['windows']))
         after.update(candidateActive=True, candidateWasDisabled=True, total=0,
-                     targetSlotIds=['a', 'b', 'c'], selectedSlotId='c', otherSlotIds=['d', 'e'])
+                     targetSlotIds=['a', 'b', 'c'], selectedSlotId='c', otherSlotIds=['d', 'e'], otherSelectedSlotId='d')
         self.assertEqual(validate('persist-reenable', 0, before, after), [])
         after['targetSlotIds'] = ['a', 'c']
         self.assertIn('logical desktop identities/order did not survive re-enable',
@@ -132,6 +133,14 @@ class ValidationTests(unittest.TestCase):
         after['targetSlotIds'] = before['targetSlotIds']
         after['selectedSlotId'] = 'b'
         self.assertIn('selected desktop identity did not survive re-enable',
+                      validate('persist-reenable', 0, before, after))
+        after['selectedSlotId'] = 'c'
+        after['otherSelectedSlotId'] = 'e'
+        self.assertIn('other display selection did not survive restart',
+                      validate('persist-reenable', 0, before, after))
+        after['otherSelectedSlotId'] = 'd'
+        before['automaticSaveReady'] = False
+        self.assertIn('automatic layout save did not settle before restart',
                       validate('persist-reenable', 0, before, after))
 
     def test_cleanup_kills_descendant_after_leader_exits(self):
