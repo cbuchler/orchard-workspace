@@ -205,4 +205,20 @@ function shell(store, epoch) {
     const saved = store.text; s.setEnabled(false); lifecycle._changed(); assert.equal(s.sources.size, 0);
     lifecycle.destroy(); assert.equal(store.text, saved);
 }
+// Loading Orchard in all-displays mode must defer, not discard, the saved
+// per-display layout. The actual settings handler calls _syncMonitors() when
+// enabling that mode with the same displays already connected.
+{
+    const store = {}, s = shell(store, 'deferred-mode'), first = s.start();
+    const order = first.orderForMonitor(0); order.insert(1, s.workspaces[1]); order.insert(2, s.workspaces[3]);
+    s.select(s.workspaces[3]); s.window(0, s.workspaces[3]); s.persistence.flush();
+    const ids = Array.from(order.slots, slot => slot.id), saved = store.text; first.destroy();
+    s.setEnabled(false); const second = s.start();
+    assert.equal(second.orderForMonitor(0).slots.length, 1, 'all-displays startup does not restore yet');
+    assert.equal(store.text, saved, 'all-displays startup leaves saved layout untouched');
+    s.setEnabled(true); second._syncMonitors(); s.persistence.flush();
+    assert.deepEqual(Array.from(second.orderForMonitor(0).slots, slot => slot.id), ids);
+    assert.equal(JSON.parse(store.text).displays.find(display => display.key === 'eDP-1').selected, ids[2]);
+    second.destroy();
+}
 console.log('PASS: versioned layout persistence, runtime identity/renumbering, pruning, fresh-session occupancy and selection, fullscreen exclusion, display identity and recovery/cleanup');

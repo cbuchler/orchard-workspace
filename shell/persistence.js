@@ -52,10 +52,17 @@ export class LogicalLayoutPersistence {
         this.state = parseLayout(settings.get_string('logical-layout'));
         this.source = 0;
         this.restoring = false;
+        this.wasEnabled = false;
     }
 
     restore(stacks = [...this.lifecycle.stacks.values()]) {
-        if (!this.state || !this.lifecycle.configuration.automaticSwitchingIsEnabled()) return;
+        const enabled = this.lifecycle.configuration.automaticSwitchingIsEnabled();
+        const entering = enabled && !this.wasEnabled;
+        this.wasEnabled = enabled;
+        if (!this.state || !enabled) return;
+        // Enabling per-display mode must restore all recognized displays even
+        // if they were already connected while restoration was disabled.
+        if (entering) stacks = [...this.lifecycle.stacks.values()];
         this.restoring = true;
         try {
             const records = this.state.displays;
