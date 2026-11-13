@@ -293,19 +293,26 @@ export class LogicalWorkspaceLifecycle {
 
     activate(stack, slot, {animate = false} = {}) {
         if (stack.index === null || slot.retired || !this.workspaces().includes(slot.workspace)) return;
-        if (!animate) this.animation?.cancel();
+        const animatedMonitor = this.animation?.selectedMonitor;
+        if (!animate || (animatedMonitor != null && animatedMonitor !== stack.index)) this.animation?.cancel();
         this.overview?._session?.navigation?.cancel();
         const workspace = slot.workspace;
         if (workspace === global.workspace_manager.get_active_workspace()) return;
         const activation = {stack, workspace};
         this.pendingActivation = activation;
         const previousMonitor = this.forcedMonitor;
+        const resolver = this.resolver;
+        const previousNavigation = resolver.navigation;
+        resolver.navigation = {monitor: stack.index, workspace};
         if (!animate) this.forcedMonitor = stack.index;
         try { workspace.activate(global.get_current_time()); }
         catch (error) {
             if (this.pendingActivation === activation) this.pendingActivation = null;
             throw error;
-        } finally { this.forcedMonitor = previousMonitor; }
+        } finally {
+            this.forcedMonitor = previousMonitor;
+            resolver.navigation = this.resolver === resolver ? previousNavigation : null;
+        }
     }
 
     takeActivationMonitor(workspace) {
@@ -376,6 +383,7 @@ export class LogicalWorkspaceLifecycle {
         this.animation = null;
         this.forcedMonitor = null;
         this.pendingActivation = null;
+        this.resolver.navigation = null;
         this.configuration = null;
         this.resolver = null;
     }

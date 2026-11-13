@@ -20,6 +20,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 export class MonitorResolver {
     constructor() {
         this.activation = null;
+        this.navigation = null;
     }
 
     get activationMonitor() {
@@ -34,6 +35,8 @@ export class MonitorResolver {
         const monitors = Main.layoutManager.monitors;
         if (monitors.some(monitor => monitor.index === this.activationMonitor))
             return this.activationMonitor;
+        if (monitors.some(monitor => monitor.index === this.navigation?.monitor))
+            return this.navigation.monitor;
         const [x, y] = global.get_pointer();
         let closest = 0;
         let closestDistance = Infinity;
