@@ -85,9 +85,9 @@ establish a narrower fact than the full acceptance matrix.
 
 | Version | Evidence and limits |
 | --- | --- |
-| 50.0, 50.6, 51.0, 51.1 upstream source | All 16 JavaScript source/model suites pass on each immutable pin (64 passes), plus four release-monitor policy tests. These are not four live runtime acceptances. |
+| 50.0, 50.6, 51.0, 51.1 upstream source | All 17 JavaScript source/model suites pass on each immutable pin (68 passes), plus four release-monitor policy tests. These are not four live runtime acceptances. |
 | GNOME Shell 50.1 / Mutter 50.1 | Official Ubuntu resolute packages were checksum-verified and extracted into a user-only prefix, with matching GNOME 50 core schemas. They ran on host common libraries and fallback schemas, with a private D-Bus/settings session and two virtual monitors. Thirty fixed-workspace shortcut cases and ten focused arrival/restacking, rapid-reversal, native-switch, Overview and fullscreen cases passed across both display directions. No runtime JavaScript errors were reported in those cases. |
-| Installed GNOME Shell 51.0 | Compatibility startup/native-right smoke passed. Broader and final integrated-candidate GNOME 51 checks are tracked separately in issue #3. |
+| Installed GNOME Shell 51.0 | Full 30-case shortcut matrix passes before persistence integration. Final candidate `097d603` passes 10 cases each in fixed and dynamic modes. GNOME 50.1 passes the same final profiles; see [integrated live evidence and remaining acceptance](LIVE_VALIDATION.md). |
 
 The GNOME 50 runtime candidate contains the reviewed early-50 restacking repair;
 later integrated candidates require their own recorded revision and checks.

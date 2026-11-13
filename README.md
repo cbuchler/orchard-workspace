@@ -210,6 +210,8 @@ The tests cover:
 
 ## Isolated live validation
 
+See the [recorded results and remaining acceptance](docs/LIVE_VALIDATION.md) for exact tested builds and environments.
+
 The optional live harness runs a separate headless compositor with two virtual displays and real GTK windows. It uses a private D-Bus session and separate settings, runtime and extension directories. It does not install Orchard into the current desktop. Requirements are GNOME Shell with headless support, Python 3 with PyGObject/GTK 4, `dbus-run-session`, and `glib-compile-schemas`.
 
 ```sh

@@ -5,10 +5,11 @@
 ### Compatibility
 
 - Declare GNOME Shell 50 and 51 support under the current/previous stable-major policy. Add a GNOME 50 Overview keyboard adapter and the upstream restacking repair needed by GNOME 50.0–50.3 when a window arrives during a slide. Detect required incompatible internals before activation, and restore compatibility hooks on disable.
-- Run 16 source/model suites against pinned GNOME 50.0, 50.6, 51.0 and 51.1 sources in CI, with exact hashes and scheduled stable-release monitoring. Isolated GNOME Shell/Mutter 50.1 checks pass 30 shortcut cases and ten focused animation/Overview/fullscreen cases on extracted official packages using host common libraries. Physical-desktop and complete GNOME 50 distribution acceptance remain separate; see [exact evidence and limits](docs/GNOME_COMPATIBILITY.md).
+- Run 17 source/model suites against pinned GNOME 50.0, 50.6, 51.0 and 51.1 sources in CI, with exact hashes and scheduled stable-release monitoring. Isolated GNOME Shell/Mutter 50.1 checks pass 30 shortcut cases and ten focused animation/Overview/fullscreen cases on extracted official packages using host common libraries. Physical-desktop and complete GNOME 50 distribution acceptance remain separate; see [exact evidence and limits](docs/GNOME_COMPATIBILITY.md).
 
 ### Added
 
+- Remove an empty logical desktop with Ctrl+Super+Delete, preserving the other display, at least one desktop and live fullscreen return paths.
 - Persist ordinary per-display desktop UUIDs, order and selection across disable/re-enable and new Shell sessions. Rebuild empty desktop backings, retain current occupied desktops without moving windows, and match changed connectors only through unambiguous hardware identity. Temporary fullscreen ownership is not saved.
 
 ### Fixed
@@ -25,6 +26,7 @@
 
 - Add persistence/reconciliation model coverage for renumbering, pruned empty desktops, new-session occupancy and selected UUIDs, absent/ambiguous display identities, fullscreen exclusion, corrupt/unsupported state and owned save-idle cleanup. Live restart/reconnect acceptance remains separate.
 - Add a reusable isolated real-window compositor harness with private settings/bus, source manifests, fixture validation, per-frame animation samples, PNG captures and explicit failure reports.
+- Pass 40 final integrated real-window checks across GNOME 50.1/51.0, both displays and fixed/dynamic modes, including automatic persistence, extension/new-Shell restarts and fullscreen mode transitions. Retain shutdown diagnostics and outstanding acceptance separately in [LIVE_VALIDATION.md](docs/LIVE_VALIDATION.md).
 - Add native shortcut regression coverage using installed Shell callbacks bound before Orchard loads, including logical numbering, boundaries, moves, modes, deferred activation and projected animation snapshots.
 - Add activation regression coverage for both display directions, the installed Shell window helper, direct window/workspace-focus calls, app activation routes, rejected requests, exceptions, nested calls and disable cleanup.
 - Source-backed automated suites pass against installed GNOME Shell 51.0 source. Thirty isolated real-window shortcut checks pass across both display directions, including native and Orchard key events, sparse/rotated orders, boundaries, window moves, desktop gesture settlement, overview navigation, all-displays fallback and extension disable. The unchanged activation-fix revision reproduces the physical-neighbor bug in the same harness. These are headless compositor checks, not physical-desktop visual acceptance.
