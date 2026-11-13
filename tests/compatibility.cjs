@@ -20,7 +20,8 @@ const Main = {wm: {...methods(['_shouldAnimate', 'actionMoveWindow', 'actionMove
     overview: {_overview: {controls: {_workspacesDisplay: display}}}};
 const Config = {PACKAGE_VERSION: '51.0'};
 const ctx = vm.createContext({Config, Meta: {Window, Workspace}, Shell: {App}, Main,
-    global: {display: methods(['sort_windows_by_stacking', 'xserver_time_is_before'])}, Extension: class {}});
+    global: {display: methods(['sort_windows_by_stacking', 'xserver_time_is_before']),
+        stage: methods(['connectObject', 'disconnectObject'])}, Extension: class {}});
 vm.runInContext(source + '\nthis.api = {assertSupportedVersion, assertShellCompatibility, requireMethods, SUPPORTED_MAJORS};', ctx);
 const {assertSupportedVersion, assertShellCompatibility} = ctx.api;
 const both = {'shell-version': ['50', '51']};

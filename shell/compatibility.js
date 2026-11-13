@@ -33,8 +33,10 @@ export function assertShellCompatibility(metadata) {
     requireMethods(Main.wm?._workspaceAnimation, ['_prepareWorkspaceSwitch', '_findMonitorGroup', '_finishWorkspaceSwitch', 'animateSwitch', 'cancelSwitchAnimation'], 'WorkspaceAnimationController');
     const display = Main.overview?._overview?.controls?._workspacesDisplay;
     requireMethods(display, ['_updateWorkspacesViews', '_endTouchGesture'], 'WorkspacesDisplay');
-    if (typeof display._moveToWorkspace !== 'function')
-        requireMethods(display, ['_onKeyPressEvent', 'prepareToLeaveOverview'], 'GNOME 50 overview keyboard');
+    if (typeof display._moveToWorkspace !== 'function') {
+        requireMethods(display, ['_onKeyPressEvent'], 'GNOME 50 overview keyboard');
+        requireMethods(global.stage, ['connectObject', 'disconnectObject'], 'GNOME 50 stage ownership');
+    }
 }
 
 export function installOverviewKeyboard(overrides, display, withNeighbors) {
@@ -50,31 +52,38 @@ export function installOverviewKeyboard(overrides, display, withNeighbors) {
     const stage = global.stage;
     const original = display._onKeyPressEvent;
     let restore = true;
-    overrides.add(display, 'prepareToLeaveOverview', native => function (...args) {
-        restore = false;
-        return native.apply(this, args);
-    });
     const token = {withNeighbors};
     const handler = (actor, event) => {
         const invoke = () => original.call(display, actor, event);
         if (!token.withNeighbors) return invoke();
         const key = event.get_key_symbol();
         const picker = display._overviewAdjustment.value === OverviewControls.ControlsState.WINDOW_PICKER && display.reactive;
-        const boundary = picker && key === Clutter.KEY_Home ? 'first'
-            : picker && key === Clutter.KEY_End ? 'last' : null;
+        if (!picker || ![Clutter.KEY_Page_Up, Clutter.KEY_Page_Down, Clutter.KEY_Home, Clutter.KEY_End].includes(key))
+            return invoke();
+        const boundary = key === Clutter.KEY_Home ? 'first'
+            : key === Clutter.KEY_End ? 'last' : null;
         return token.withNeighbors(invoke, boundary);
     };
     stage.disconnectObject(display);
-    let id;
-    try { id = stage.connect('key-press-event', handler); }
+    // Native vfunc_hide disconnects this owner before destroying its views.
+    // Observe that existing cleanup boundary without overriding a GObject vfunc.
+    try {
+        overrides.add(stage, 'disconnectObject', native => function (...owners) {
+            if (owners.includes(display)) restore = false;
+            return native.apply(this, owners);
+        });
+        stage.connectObject('key-press-event', handler, display);
+    }
     catch (error) {
+        stage.disconnectObject(display);
         stage.connectObject('key-press-event', original.bind(display), display);
         throw error;
     }
     return () => {
         token.withNeighbors = null;
-        stage.disconnect(id);
-        if (restore && display.mapped)
+        const restoreNative = restore && display.mapped;
+        stage.disconnectObject(display);
+        if (restoreNative)
             stage.connectObject('key-press-event', original.bind(display), display);
     };
 }

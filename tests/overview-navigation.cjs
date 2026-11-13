@@ -1,4 +1,4 @@
-// Run GNOME 51's real allocation, membership, keyboard and wheel methods against
+// Run upstream GNOME's real allocation, membership, keyboard and wheel methods against
 // model actors. This catches index and pre-bound-signal mistakes; it does not
 // substitute for a running Mutter/GJS visual acceptance test.
 const fs = require('node:fs');
@@ -210,7 +210,7 @@ for (const signature of ['_endTouchGesture()',
     display[signature.split('(')[0]] = method(native, signature, displayStart);
 if (legacyKeyboard) {
     display._onKeyPressEvent = method(native, '_onKeyPressEvent(actor, event)', displayStart);
-    display.prepareToLeaveOverview = function () { stage.disconnectObject(this); };
+    display.prepareToLeaveOverview = method(native, 'prepareToLeaveOverview()', displayStart);
     stage.connectObject('key-press-event', display._onKeyPressEvent.bind(display), display);
     display._nextWorkspace = () => stage.emit('key-press-event', {get_key_symbol: () => Clutter.KEY_Page_Down});
     display._prevWorkspace = () => stage.emit('key-press-event', {get_key_symbol: () => Clutter.KEY_Page_Up});
@@ -283,7 +283,19 @@ secondaryRecord.order.workspaces[2].activate();
 display._nextWorkspace(); assert.equal(active, secondaryRecord.order.workspaces[3]);
 display._prevWorkspace(); assert.equal(active, secondaryRecord.order.workspaces[2]);
 if (legacyKeyboard) {
+    tracker.emit('begin', 1);
+    stage.emit('key-press-event', {get_key_symbol: () => 0xffe1}); // Shift_L
+    assert.equal(isolation._session.gesture, true, 'unhandled key must preserve an active gesture');
+    display._overviewAdjustment.value = 2;
+    display._nextWorkspace();
+    assert.equal(isolation._session.gesture, true, 'app-grid key propagation must preserve a gesture');
+    display._overviewAdjustment.value = 1;
+    display.reactive = false;
+    display._nextWorkspace();
+    assert.equal(isolation._session.gesture, true, 'nonreactive key propagation must preserve a gesture');
+    display.reactive = true;
     stage.emit('key-press-event', {get_key_symbol: () => Clutter.KEY_Home});
+    assert.equal(isolation._session.gesture, false, 'recognized navigation key cancels the gesture');
     assert.equal(active, secondaryRecord.order.workspaces[0], 'legacy Home selects logical first');
     stage.emit('key-press-event', {get_key_symbol: () => Clutter.KEY_End});
     assert.equal(active, secondaryRecord.order.workspaces.at(-1), 'legacy End selects logical last');
@@ -419,6 +431,30 @@ assert.equal(destructionTracker.destroyed, true);
 assert.equal(manager.owned(secondary), 0, 'destroyed views do not regain native manager handlers');
 assert.equal(display._swipeTracker, originalTracker);
 isolation.destroy();
+if (legacyKeyboard) {
+    // Execute GNOME 50's real lifecycle methods. prepareToLeaveOverview does
+    // not disconnect the stage owner: vfunc_hide does, before view destruction.
+    const hiddenDisplay = {mapped: true, reactive: true, _workspacesViews: [],
+        _overviewAdjustment: {value: 1}, _updateSwipeTracker() {}, parentHide() {},
+        _onKeyPressEvent: display._onKeyPressEvent};
+    hiddenDisplay.prepareToLeaveOverview = method(native, 'prepareToLeaveOverview()', displayStart);
+    hiddenDisplay.vfunc_hide = method(native.replace('super.vfunc_hide();', 'this.parentHide();'), 'vfunc_hide()', displayStart);
+    const ownership = vm.runInContext('new MethodOverrides()', context);
+    const bind = vm.runInContext('installOverviewKeyboard', context);
+    const foreignOwner = {};
+    stage.connectObject('key-press-event', () => {}, foreignOwner);
+    stage.connectObject('key-press-event', hiddenDisplay._onKeyPressEvent.bind(hiddenDisplay), hiddenDisplay);
+    const cleanup = bind(ownership, hiddenDisplay, invoke => invoke());
+    assert.equal(stage.owned(hiddenDisplay), 1, 'adapter keeps native display ownership');
+    hiddenDisplay.prepareToLeaveOverview();
+    assert.equal(stage.owned(hiddenDisplay), 1, 'prepare-to-leave retains the native key handler');
+    hiddenDisplay.vfunc_hide();
+    assert.equal(stage.owned(hiddenDisplay), 0, 'native hide disconnects the adapted key handler');
+    cleanup(); ownership.clear();
+    assert.equal(stage.owned(hiddenDisplay), 0, 'cleanup after native hide must not resurrect its handler');
+    assert.equal(stage.owned(foreignOwner), 1, 'native hide and cleanup preserve other owners');
+    stage.disconnectObject(foreignOwner);
+}
 console.log('PASS: upstream GNOME logical large-view allocation, bidirectional seam swipes/Page/wheel, bounds, cancellation, selection lock, dynamic workspace lifecycle, mode and cleanup');
 
 // Integrate native render/membership callbacks with independently sized stacks.
