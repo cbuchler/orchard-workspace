@@ -11,6 +11,10 @@
       <default><![CDATA[['<Control><Super>n']]]></default>
       <summary>Add workspace on active display</summary>
     </key>
+    <key name="remove-active-display-workspace" type="as">
+      <default><![CDATA[['<Control><Super>Delete']]]></default>
+      <summary>Remove empty workspace on active display</summary>
+    </key>
     <key name="switch-active-display-previous" type="as">
       <default><![CDATA[['<Control><Super>Up']]]></default>
       <summary>Previous workspace</summary>

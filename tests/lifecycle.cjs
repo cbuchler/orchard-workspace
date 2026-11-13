@@ -42,7 +42,7 @@ function setup(dynamic = true, deferredActivation = false) {
     const GLib = {PRIORITY_DEFAULT_IDLE: 0, SOURCE_REMOVE: false, SOURCE_CONTINUE: true,
         idle_add(_priority, callback) { const id = nextSource++; sources.set(id, callback); return id; },
         source_remove(id) { assert(sources.delete(id)); }};
-    const Meta = {WindowType: {NORMAL: 1, DIALOG: 2, SPLASHSCREEN: 3, MODAL_DIALOG: 4},
+    const Meta = {WindowType: {NORMAL: 1, DIALOG: 2, SPLASHSCREEN: 3, MODAL_DIALOG: 4, DESKTOP: 5, DOCK: 6, UTILITY: 7},
         LaterType: {BEFORE_REDRAW: 0}, prefs_get_dynamic_workspaces: () => dynamic};
     const ctx = vm.createContext({Main, global, GLib, Meta, MIN_NUM_WORKSPACES: 2,
         Shell: {WindowTracker: {get_default: () => ({get_startup_sequences: () => []})}}});
@@ -71,6 +71,7 @@ function setup(dynamic = true, deferredActivation = false) {
         const window = Object.assign(new Signals(), {monitor, workspace, fullscreen: false, destroyed: false,
             get_monitor() { assert(!this.destroyed); return this.monitor; }, get_workspace() { assert(!this.destroyed); return this.workspace; },
             get_window_type: () => 1, get_transient_for: () => null, is_on_all_workspaces: () => false,
+            is_override_redirect: () => false,
             is_fullscreen() { return this.fullscreen; },
             change_workspace(ws) { assert(!this.destroyed); this.workspace = ws; this.emit('workspace-changed'); },
             change_workspace_by_index(index) { this.change_workspace(workspaces[index]); },
@@ -81,7 +82,8 @@ function setup(dynamic = true, deferredActivation = false) {
     function toggle(window, fullscreen) { window.fullscreen = fullscreen; window.emit('notify::fullscreen'); flush(); }
     return {lifecycle, workspaces, windows, manager, display, layout, tracker, makeWindow, flush, toggle, Main, animationDecisions,
         choose(index) { selected = index; }, active: () => active, setMonitors(value) { monitors = value; layout.emit('monitors-changed'); },
-        enable() { lifecycle.initialize(); lifecycle.enable(); flush(); }, sources};
+        enable() { lifecycle.initialize(); lifecycle.enable(); flush(); }, sources,
+        setEnabled(value) { enabled = value; }};
 }
 for (const dynamic of [false, true]) {
     const s = setup(dynamic); const left = s.makeWindow(0), right = s.makeWindow(1);
@@ -349,4 +351,136 @@ for (const deferred of [false, true]) {
     assert.equal(s.lifecycle.forcedMonitor, null);
     s.lifecycle.destroy();
 }
+// Empty desktop removal selects the previous slot (or the next for the first
+// slot), preserving logical identities and the other display's selection.
+for (const dynamic of [false, true]) for (const deferred of [false, true]) for (const monitor of [0, 1]) {
+    for (const position of [0, 1, 2]) {
+        const s = setup(dynamic, deferred), other = s.makeWindow(1 - monitor); s.enable();
+        const stack = s.lifecycle.stackForMonitor(monitor), order = stack.order;
+        s.lifecycle.addWorkspace(monitor, false); s.lifecycle.addWorkspace(monitor, false);
+        const before = [...order.slots], removed = before[position], target = before[position > 0 ? position - 1 : 1];
+        s.lifecycle.activate(stack, removed); s.flush(); s.choose(monitor);
+        const otherOrder = s.lifecycle.orderForMonitor(1 - monitor), otherSlots = [...otherOrder.slots];
+        const otherActive = otherSlots.find(slot => slot.workspace === s.active());
+        const count = s.workspaces.length;
+        let cancelled = 0; s.lifecycle.animation = {cancel() { cancelled++; }};
+        assert.equal(s.lifecycle.removeWorkspace(), true);
+        assert.equal(s.workspaces.length, count, 'removal does not directly delete a physical workspace');
+        s.flush();
+        assert.equal(cancelled, 1, 'cancel the old slide before starting removal navigation');
+        assert.deepEqual(Array.from(order.slots), before.filter(slot => slot !== removed));
+        assert.equal(removed.retired, true);
+        assert.equal(removed.origin, target, 'pending fullscreen returns follow the chosen neighbor');
+        assert.equal(s.active(), target.workspace);
+        assert.equal(s.animationDecisions.at(-1), true, 'neighbor selection follows ordinary animated navigation policy');
+        assert.deepEqual(Array.from(otherOrder.slots), otherSlots);
+        assert.equal(otherActive.workspace, s.active());
+        assert.equal(other.workspace, s.active());
+        assert.equal(s.lifecycle.overview._orders.get(monitor), order);
+        s.tracker._checkWorkspaces(); s.flush();
+        assert.equal(other.workspace, s.active(), 'native pruning leaves the other display visible');
+        s.lifecycle.destroy();
+    }
+}
+// Meaningful windows of any managed type prevent deletion. Transient dialogs
+// and utility windows cannot be ignored merely because they are not NORMAL.
+for (const type of [1, 2, 3, 4, 7, 99]) for (const transient of [false, true]) {
+    const s = setup(false); s.makeWindow(1); s.enable(); s.lifecycle.addWorkspace(0, false);
+    const win = s.makeWindow(0); win.get_window_type = () => type;
+    win.get_transient_for = () => transient ? {} : null;
+    let cancelled = 0; s.lifecycle.animation = {cancel() { cancelled++; }};
+    const before = [...s.lifecycle.orderForMonitor(0).slots], active = s.active();
+    assert.equal(s.lifecycle.removeWorkspace(0), false);
+    assert.deepEqual(Array.from(s.lifecycle.orderForMonitor(0).slots), before);
+    assert.equal(s.active(), active); assert.equal(cancelled, 0);
+    s.lifecycle.destroy();
+}
+// Pinned/all-workspace windows and system desktop/dock/popup layers are not
+// occupants of a single logical desktop, and remain in their actual placement.
+for (const layer of ['sticky', 'desktop', 'dock', 'popup']) {
+    const s = setup(false); s.makeWindow(1); s.enable(); s.lifecycle.addWorkspace(0, false);
+    const win = s.makeWindow(0), workspace = win.workspace;
+    if (layer === 'sticky') win.is_on_all_workspaces = () => true;
+    if (layer === 'desktop') win.get_window_type = () => 5;
+    if (layer === 'dock') win.get_window_type = () => 6;
+    if (layer === 'popup') win.is_override_redirect = () => true;
+    assert.equal(s.lifecycle.removeWorkspace(0), true, layer);
+    s.flush(); assert.equal(win.workspace, workspace, 'removal does not relocate ignored layers');
+    s.lifecycle.destroy();
+}
+for (const reason of ['last', 'disabled', 'missingMonitor', 'fullscreenOwner']) {
+    const s = setup(false); s.makeWindow(1); s.enable();
+    if (reason !== 'last') s.lifecycle.addWorkspace(0, false);
+    if (reason === 'disabled') s.setEnabled(false);
+    if (reason === 'fullscreenOwner') s.lifecycle.orderForMonitor(0).slots[0].owner = {};
+    const before = [...s.lifecycle.orderForMonitor(0).slots];
+    assert.equal(s.lifecycle.removeWorkspace(reason === 'missingMonitor' ? 42 : 0), false, reason);
+    assert.deepEqual(Array.from(s.lifecycle.orderForMonitor(0).slots), before);
+    s.lifecycle.destroy();
+}
+// A physical backing shared with another display's hidden desktop stays live.
+{
+    const s = setup(true), other = s.makeWindow(1), hidden = s.makeWindow(1, s.workspaces[3]);
+    s.enable(); s.lifecycle.addWorkspace(0, false);
+    hidden.change_workspace(s.workspaces.at(-1)); s.flush();
+    const backing = s.active();
+    assert.equal(s.lifecycle.removeWorkspace(0), true); s.flush();
+    assert.equal(hidden.workspace, backing);
+    s.tracker._checkWorkspaces(); s.flush();
+    assert(s.workspaces.includes(backing), 'native cleanup must retain backing still used by another display');
+    assert.equal(other.workspace, s.active()); assert.notEqual(hidden.workspace, s.active());
+    s.lifecycle.destroy();
+}
+// Removing an empty origin while its owner is fullscreen redirects that
+// owner's later return through every subsequently removed neighbor.
+{
+    const s = setup(false), win = s.makeWindow(0); s.makeWindow(1); s.enable();
+    const stack = s.lifecycle.stackForMonitor(0), order = stack.order;
+    s.lifecycle.addWorkspace(0, false); s.lifecycle.addWorkspace(0, false);
+    const [first, origin, surviving] = order.slots;
+    win.change_workspace(origin.workspace); s.flush(); s.lifecycle.activate(stack, origin); s.flush(); s.toggle(win, true);
+    const fullscreen = s.lifecycle.windows.get(win).fullscreen.slot;
+    assert.equal(s.lifecycle.removeWorkspace(0), false, 'an owned fullscreen desktop cannot be removed');
+    s.lifecycle.activate(stack, origin); s.flush();
+    assert.equal(s.lifecycle.removeWorkspace(0), true); s.flush();
+    assert.equal(origin.origin, first);
+    assert.equal(s.lifecycle.removeWorkspace(0), true); s.flush();
+    assert.equal(first.retired, true);
+    assert.equal(first.origin, fullscreen);
+    s.toggle(win, false);
+    assert.deepEqual(Array.from(order.slots), [surviving], 'return skips its own temporary slot and uses a surviving desktop');
+    assert.equal(win.workspace, surviving.workspace);
+    assert.equal(win.workspace, s.active());
+    s.lifecycle.destroy();
+}
+// The fullscreen owner can outlive every ordinary desktop. Leaving fullscreen
+// or closing it must retain one normal logical desktop instead of zero slots.
+for (const close of [false, true]) {
+    const s = setup(false), win = s.makeWindow(0); s.makeWindow(1); s.enable();
+    const stack = s.lifecycle.stackForMonitor(0), order = stack.order;
+    const origin = order.slots[0], last = s.lifecycle.addWorkspace(0, false);
+    s.toggle(win, true);
+    const temporary = s.lifecycle.windows.get(win).fullscreen.slot;
+    for (const slot of [origin, last]) {
+        s.lifecycle.activate(stack, slot); s.flush();
+        assert.equal(s.lifecycle.removeWorkspace(0), true); s.flush();
+    }
+    assert.deepEqual(Array.from(order.slots), [temporary]);
+    if (close) {
+        s.windows.splice(s.windows.indexOf(win), 1); win.emit('unmanaged'); win.destroyed = true; s.flush();
+    } else {
+        win.fullscreen = false; win.emit('notify::fullscreen');
+        win.change_workspace(s.workspaces.find(workspace => workspace !== temporary.workspace));
+        s.flush();
+        assert.equal(win.workspace, temporary.workspace, 'normal-placement restore cannot create another logical slot');
+    }
+    assert.deepEqual(Array.from(order.slots), [temporary]);
+    assert.equal(temporary.retired, false);
+    assert.equal(temporary.owner, null);
+    assert.equal(temporary.origin, null);
+    assert.equal(temporary.workspace, s.active());
+    assert.equal(s.lifecycle.removeWorkspace(0), false, 'the surviving ordinary desktop is still the last slot');
+    s.lifecycle.destroy();
+}
+console.log('PASS: safe logical desktop removal, neighbor selection, occupied/system/pinned layers, shared backing and retired fullscreen origins');
 console.log('PASS: independent initialization/expansion, fixed/dynamic retention, fullscreen return and coalesced exit, deferred activation ownership, native animation gating, manual moves, hotplug and cleanup');

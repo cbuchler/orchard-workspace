@@ -88,3 +88,27 @@ for (const [pointer, monitor] of [[1, 0], [0, 1]]) {
     assert.equal(s.resolver.resolve(), 1, 'an absent navigation monitor falls back to pointer selection');
 }
 console.log('PASS: explicit navigation monitor ownership, cross-monitor cancellation, same-monitor continuity, window priority, nested/failed/disabled scope cleanup');
+
+for (const [pointer, monitor] of [[1, 0], [0, 1]]) {
+    const s = setup({pointer, locked: 1 - monitor});
+    const order = s.lifecycle.orderForMonitor(monitor), removed = order.slots[0], target = order.slots[1];
+    assert.equal(s.lifecycle.removeWorkspace(monitor), true);
+    assert.equal(s.requests.at(-1).monitor, monitor, 'explicit removal animates on its requested display');
+    assert.equal(s.requests.at(-1).animate, true);
+    assert.equal(order.slots.length, 1);
+    assert.equal(order.slots[0], target);
+    assert.equal(removed.retired, true);
+    assert.equal(s.resolver.navigation, null);
+    assert.equal(s.resolver.resolve(), pointer);
+}
+{
+    const s = setup();
+    const order = s.lifecycle.orderForMonitor(0), before = Array.from(order.slots);
+    s.during(() => { throw new Error('native activation failed'); });
+    assert.throws(() => s.lifecycle.removeWorkspace(0), /native activation failed/);
+    assert.deepEqual(Array.from(order.slots), before, 'failed selection must not retire a desktop');
+    assert(before.every(slot => !slot.retired));
+    assert.equal(s.resolver.navigation, null);
+    assert.equal(s.lifecycle.pendingActivation, null);
+}
+console.log('PASS: explicit removal display ownership and failed-removal atomicity');

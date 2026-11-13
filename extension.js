@@ -27,6 +27,7 @@ import {NativeWorkspaceShortcuts} from './shell/shortcuts.js';
 const PREVIOUS = 'switch-active-display-previous';
 const NEXT = 'switch-active-display-next';
 const ADD = 'add-active-display-workspace';
+const REMOVE = 'remove-active-display-workspace';
 
 export default class SwitchWorkspacesExtension extends Extension {
     enable() {
@@ -58,6 +59,9 @@ export default class SwitchWorkspacesExtension extends Extension {
             Main.wm.addKeybinding(ADD, settings, Meta.KeyBindingFlags.NONE,
                 Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => lifecycle.addWorkspace());
             this._state.bindings.push(ADD);
+            Main.wm.addKeybinding(REMOVE, settings, Meta.KeyBindingFlags.NONE,
+                Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => lifecycle.removeWorkspace());
+            this._state.bindings.push(REMOVE);
             const connect = (object, signal, callback) => {
                 this._state.signals.push([object, object.connect(signal, callback)]);
             };

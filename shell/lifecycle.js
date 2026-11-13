@@ -282,6 +282,37 @@ export class LogicalWorkspaceLifecycle {
         return slot;
     }
 
+    removeWorkspace(monitor = this.resolver.resolve()) {
+        this.configuration.conditionallyEnableAutomaticSwitching();
+        if (!this.configuration.automaticSwitchingIsEnabled()) return false;
+        const stack = this.stackForMonitor(monitor);
+        if (!stack || stack.index === null || stack.order.slots.length <= 1) return false;
+        const active = global.workspace_manager.get_active_workspace();
+        const position = stack.order.slots.findIndex(slot => slot.workspace === active);
+        const slot = stack.order.slots[position];
+        if (!slot || slot.owner || slot.retired) return false;
+        const occupied = global.get_window_actors().some(actor => {
+            const window = actor.get_meta_window();
+            return window && window.get_monitor() === monitor && window.get_workspace() === active &&
+                !window.is_on_all_workspaces() && !window.is_override_redirect() &&
+                ![Meta.WindowType.DESKTOP, Meta.WindowType.DOCK].includes(window.get_window_type());
+        });
+        if (occupied) return false;
+
+        const target = stack.order.slots[position > 0 ? position - 1 : 1];
+        if (target.retired || !this.workspaces().includes(target.workspace)) return false;
+        this.animation?.cancel();
+        this.activate(stack, target, {animate: true});
+        if (global.workspace_manager.get_active_workspace() !== target.workspace) return false;
+        // Redirect pending fullscreen returns to the surviving neighbor. Only
+        // retire this logical slot: another display may still use its backing.
+        slot.origin = target;
+        slot.retired = true;
+        stack.order.slots.splice(position, 1);
+        this._changed();
+        return true;
+    }
+
     switchWorkspace(direction) {
         const stack = this.stackForMonitor(this.animation?.selectedMonitor ?? this.resolver.resolve());
         if (!stack) return;
@@ -334,30 +365,35 @@ export class LogicalWorkspaceLifecycle {
         this.activate(stack, slot);
     }
 
-    _returnSlot(stack, origin) {
+    _returnSlot(stack, origin, excluded = null) {
+        const fallback = () => stack.order.slots.find(slot => slot !== excluded && !slot.retired);
         const seen = new Set();
-        while (origin && (origin.retired || !stack.order.slots.includes(origin))) {
-            if (seen.has(origin)) return stack.order.slots[0];
+        while (origin && (origin === excluded || origin.retired || !stack.order.slots.includes(origin))) {
+            if (seen.has(origin)) return fallback();
             seen.add(origin); origin = origin.origin;
         }
-        return origin ?? stack.order.slots[0];
+        return origin ?? fallback();
     }
 
     _leaveFullscreen(state, moveWindow, activateReturn = true) {
         const {stack, slot, origin} = state.fullscreen;
         state.fullscreen = null;
-        const target = this._returnSlot(stack, origin);
+        const target = this._returnSlot(stack, origin, slot);
+        const destination = target ?? slot;
         const wasActive = slot.workspace === global.workspace_manager.get_active_workspace();
-        if (moveWindow && target && this.workspaces().includes(target.workspace)) {
-            state.window.change_workspace(target.workspace);
+        if (moveWindow && this.workspaces().includes(destination.workspace)) {
+            state.window.change_workspace(destination.workspace);
         }
         const occupied = this._allWindows().some(window => window !== state.window &&
             window.get_monitor() === stack.index && window.get_workspace() === slot.workspace);
-        if (!occupied) {
+        if (!occupied && target) {
             slot.retired = true;
             stack.order.slots = stack.order.slots.filter(item => item !== slot);
         } else {
-            slot.owner = null; // A user placed other windows here: keep their slot.
+            // Keep occupied temporary desktops, or the final desktop when all
+            // of its ordinary return destinations were explicitly removed.
+            slot.owner = null;
+            if (!target) slot.origin = null;
         }
         if (wasActive && target && activateReturn && stack.index !== null) this.activate(stack, target);
         this._changed();
