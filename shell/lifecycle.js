@@ -319,7 +319,9 @@ export class LogicalWorkspaceLifecycle {
     _enterFullscreen(state, stack) {
         const origin = this._slotForWindow(state.window);
         if (!origin) return;
-        const slot = stack.order.insert(stack.order.slots.length, this._freeBacking(stack), state.window, origin);
+        const workspace = this._freeBacking(stack);
+        const position = stack.order.slots.indexOf(origin) + 1;
+        const slot = stack.order.insert(position, workspace, state.window, origin);
         state.fullscreen = {stack, slot, origin};
         state.window.change_workspace(slot.workspace);
         this.activate(stack, slot);

@@ -143,6 +143,77 @@ for (const dynamic of [false, true]) {
     assert(s.animationDecisions.every(value => value === false), 'native GNOME animation gate suppresses only Orchard activations');
     assert.equal(s.Main.wm._shouldAnimate(), true, 'disable restores native animation decision');
 }
+// Fullscreen belongs immediately after its stable origin, even when that
+// origin is hidden or the pointer is on another display. Inserting/removing
+// the temporary slot must leave every unrelated logical identity in place.
+for (const dynamic of [false, true]) for (const monitor of [0, 1]) {
+    for (const originIndex of [0, 1, 2]) for (const activeOrigin of [false, true]) {
+        const s = setup(dynamic), win = s.makeWindow(monitor), other = s.makeWindow(1 - monitor);
+        s.enable();
+        const stack = s.lifecycle.stackForMonitor(monitor), order = stack.order;
+        s.lifecycle.addWorkspace(monitor, false); s.lifecycle.addWorkspace(monitor, false);
+        const before = [...order.slots], origin = before[originIndex];
+        win.change_workspace(origin.workspace); s.flush();
+        s.lifecycle.activate(stack, before[activeOrigin ? originIndex : (originIndex + 1) % before.length]);
+        s.flush();
+        const otherOrder = s.lifecycle.orderForMonitor(1 - monitor);
+        const otherSlots = [...otherOrder.slots];
+        const otherActive = otherSlots.find(slot => slot.workspace === s.active());
+        s.choose(1 - monitor); s.toggle(win, true);
+        const temporary = s.lifecycle.windows.get(win).fullscreen.slot;
+        assert.equal(temporary.origin, origin);
+        assert.deepEqual(Array.from(order.slots), [...before.slice(0, originIndex + 1), temporary, ...before.slice(originIndex + 1)],
+            'fullscreen inserts after first/middle/last origin without moving unrelated slots');
+        assert.equal(win.workspace, temporary.workspace);
+        assert.equal(s.active(), temporary.workspace);
+        assert.deepEqual(Array.from(otherOrder.slots), otherSlots, 'other display keeps its logical order');
+        assert.equal(otherActive.workspace, s.active());
+        assert.equal(other.workspace, s.active(), 'other display keeps its visible window');
+        assert.equal(s.lifecycle.overview._orders.get(monitor), order, 'overview uses the updated logical order');
+        s.toggle(win, false);
+        assert.deepEqual(Array.from(order.slots), before, 'fullscreen exit restores the original logical sequence');
+        assert.equal(win.workspace, origin.workspace);
+        assert.equal(s.active(), origin.workspace);
+        assert.equal(temporary.retired, true);
+        assert.equal(otherActive.workspace, s.active());
+        s.lifecycle.destroy();
+    }
+}
+// A nested fullscreen slot follows its fullscreen origin, not the end of the
+// list. Retiring an inactive outer owner leaves the inner slot selected and
+// its return chain skips the retired slot without disturbing regular slots.
+for (const dynamic of [false, true]) {
+    const s = setup(dynamic), outer = s.makeWindow(0); s.makeWindow(1); s.enable();
+    const stack = s.lifecycle.stackForMonitor(0), order = stack.order;
+    s.lifecycle.addWorkspace(0, false); s.lifecycle.addWorkspace(0, false);
+    const before = [...order.slots], origin = before[1];
+    outer.change_workspace(origin.workspace); s.flush(); s.lifecycle.activate(stack, origin); s.flush();
+    s.toggle(outer, true);
+    const outerSlot = s.lifecycle.windows.get(outer).fullscreen.slot;
+    const inner = s.makeWindow(0); s.display.emit('window-created', inner); s.flush(); s.toggle(inner, true);
+    const innerSlot = s.lifecycle.windows.get(inner).fullscreen.slot;
+    assert.deepEqual(Array.from(order.slots), [before[0], origin, outerSlot, innerSlot, before[2]]);
+    s.toggle(outer, false);
+    assert.equal(s.active(), innerSlot.workspace, 'inactive fullscreen owner must not pull focus from its child');
+    assert.deepEqual(Array.from(order.slots), [before[0], origin, innerSlot, before[2]]);
+    s.toggle(inner, false);
+    assert.deepEqual(Array.from(order.slots), before);
+    assert.equal(inner.workspace, origin.workspace);
+    assert.equal(s.active(), origin.workspace);
+    // If another window occupies the temporary slot, retain it in its original
+    // adjacent position after the fullscreen owner returns.
+    s.toggle(outer, true);
+    const retained = s.lifecycle.windows.get(outer).fullscreen.slot;
+    const occupant = s.makeWindow(0, retained.workspace); s.display.emit('window-created', occupant); s.flush();
+    s.toggle(outer, false);
+    assert.deepEqual(Array.from(order.slots), [before[0], origin, retained, before[2]]);
+    assert.equal(retained.retired, false);
+    assert.equal(retained.owner, null);
+    assert.equal(occupant.workspace, retained.workspace);
+    s.lifecycle.destroy();
+}
+console.log('PASS: adjacent fullscreen insertion at first/middle/last origins on both displays, hidden origins, nested returns and retained occupied slots');
+
 // Import occupied existing workspaces without merging windows or deleting
 // physical workspaces merely to obtain a one-slot visual default.
 {
@@ -199,7 +270,8 @@ for (const dynamic of [false, true]) for (const workspaceFirst of [false, true])
     s.choose(1); s.lifecycle.addWorkspace(1); s.flush();
     const otherSlot = s.lifecycle.orderForMonitor(1).slots.find(slot => slot.workspace === s.active());
     const expectedSlotCount = s.lifecycle.orderForMonitor(0).slots.length - 1;
-    const restoredPlacement = unclaimed ? s.manager.append_new_workspace() : s.lifecycle.orderForMonitor(0).slots[1].workspace;
+    const restoredPlacement = unclaimed ? s.manager.append_new_workspace() :
+        s.lifecycle.orderForMonitor(0).slots.find(slot => slot !== temporary && slot !== origin).workspace;
     win.fullscreen = false;
     if (!workspaceFirst) win.emit('notify::fullscreen');
     win.change_workspace(restoredPlacement);
