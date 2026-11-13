@@ -43,7 +43,7 @@ and [51.1 source tree](https://github.com/GNOME/gnome-shell/tree/33da06854e229c2
 | Window/App activation (`Meta.Window`, `Meta.Workspace`, `Shell.App`, `Main.activateWindow`) | Same entry points on both lines. GI methods and display ordering/time helpers are checked before enable; activation suites exercise upstream `Main.activateWindow`. |
 | Window manager workspace actions and native shortcuts (`windowManager.js`) | Action signatures remain usable. GNOME 50's native move path directly blocks/unblocks its tracker; 51 uses WindowManager methods with nested accounting. Run each version's real action bodies, preserving native ownership. |
 | Workspace tracker (`main.js`) | `_checkWorkspaces` / `_queueCheckWorkspaces` remain usable. Checked before enable; lifecycle tests execute the version's tracker. |
-| Workspace animation (`workspaceAnimation.js`) | Preparation, group lookup, finish, switch and cancellation methods remain available. Checked before enable. Monitor group `_container`, switch data, progress and actor ownership remain private session data; existing guards and cancellation cleanup apply. GNOME 51 also changes minimized-window clone bookkeeping. Live visual tests remain required. |
+| Workspace animation (`workspaceAnimation.js`) | Preparation, group lookup, finish, switch and cancellation methods remain available. Checked before enable. Monitor group `_container`, switch data, progress and actor ownership remain private session data; existing guards and cancellation cleanup apply. GNOME 50.0–50.3 restacking can dereference a missing clone record when a window arrives during animation; the scoped adapter uses upstream's retained-record sorting fix, available natively from 50.4, and restores the native callable on disable. Later builds also change minimized-window clone bookkeeping. Live visual tests remain required. |
 | Overview navigation (`workspacesView.js`) | GNOME 51 uses `_moveToWorkspace` and binding-pool callbacks. GNOME 50 uses a prebound, display-owned stage `_onKeyPressEvent`. The focused adapter rebinds that audited callback and maps Page/Home/End to logical order only when native navigation is enabled; unrelated keys propagate without cancelling gestures. It retains display ownership so native `vfunc_hide` disconnects the callback, restores the native callback on disable, and avoids restoring it after native Overview teardown. |
 | Overview views, thumbnails, DND and projections (`workspacesView.js`, `workspaceThumbnail.js`, `workspace.js`) | View/thumbnail hooks, adjustment fields, drag callbacks and membership updates are compatible in the four locked versions. Source/model tests cover each version. Instances created later are guarded when hooks are installed; failed session setup tears the session down. |
 | Swipe input (`swipeTracker.js`) | Constructor, signal and actor-connection shapes are compatible in locked sources. Owned tracker connections/actions are captured and released, leaving native and third-party owners intact. |
@@ -55,6 +55,15 @@ methods fail with an actionable name. `MethodOverrides.add()` rejects a missing
 callable before writing the property. Existing enable/session error paths remove
 hooks and resources after later failures. This detects known incompatible shapes;
 it cannot prove that a future private method retains its meaning.
+
+The early GNOME 50 restacking adapter follows upstream commit
+[`fe0dadb2288a1b5fbf418c08de83ba57861a4885`](https://github.com/GNOME/gnome-shell/commit/fe0dadb2288a1b5fbf418c08de83ba57861a4885).
+The [50.3 source](https://github.com/GNOME/gnome-shell/blob/50.3/js/ui/workspaceAnimation.js)
+retains the affected live-actor filtering method; the
+[50.4 source](https://github.com/GNOME/gnome-shell/blob/50.4/js/ui/workspaceAnimation.js)
+contains the repair. The source regression first demonstrates the original
+missing-record failure on affected fixtures, then verifies retained clone order,
+the maintenance-version boundary and exact native method restoration.
 
 ## Live release gate
 

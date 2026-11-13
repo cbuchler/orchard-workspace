@@ -23,7 +23,7 @@ import {WorkspaceSwitcher} from './shell/switcher.js';
 import {LogicalWorkspaceLifecycle} from './shell/lifecycle.js';
 import {WindowActivation} from './shell/activation.js';
 import {NativeWorkspaceShortcuts} from './shell/shortcuts.js';
-import {assertShellCompatibility} from './shell/compatibility.js';
+import {assertShellCompatibility, WorkspaceStackingCompatibility} from './shell/compatibility.js';
 
 const PREVIOUS = 'switch-active-display-previous';
 const NEXT = 'switch-active-display-next';
@@ -47,9 +47,11 @@ export default class SwitchWorkspacesExtension extends Extension {
         lifecycle.animation = animation;
         const activation = new WindowActivation(configuration, resolver);
         const shortcuts = new NativeWorkspaceShortcuts(switcher);
-        this._state = {settings, configuration, animation, overview, switcher, lifecycle, activation, shortcuts, signals: [], bindings: []};
+        const compatibility = new WorkspaceStackingCompatibility();
+        this._state = {settings, configuration, animation, overview, switcher, lifecycle, activation, shortcuts, compatibility, signals: [], bindings: []};
 
         try {
+            compatibility.enable();
             activation.enable();
             animation.enable();
             overview.enable();
@@ -105,5 +107,6 @@ export default class SwitchWorkspacesExtension extends Extension {
         state.lifecycle.destroy();
         state.overview.destroy();
         state.animation.destroy();
+        state.compatibility.destroy();
     }
 }

@@ -5,9 +5,43 @@ import Clutter from 'gi://Clutter';
 import * as Config from 'resource:///org/gnome/shell/misc/config.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as OverviewControls from 'resource:///org/gnome/shell/ui/overviewControls.js';
+import * as WorkspaceAnimation from 'resource:///org/gnome/shell/ui/workspaceAnimation.js';
+import {MethodOverrides} from './methodOverrides.js';
 
 // Advance this pair with the fixture lock and CI matrix at each stable release.
 export const SUPPORTED_MAJORS = ['50', '51'];
+
+function requiresWorkspaceStackingFix(version) {
+    const [major, minor] = version.split('.').map(Number);
+    return major === 50 && minor < 4;
+}
+
+export class WorkspaceStackingCompatibility {
+    constructor() {
+        this.overrides = new MethodOverrides();
+    }
+
+    enable() {
+        if (!requiresWorkspaceStackingFix(Config.PACKAGE_VERSION)) return;
+        // Upstream 50.4 includes fe0dadb2288a1b5fbf418c08de83ba57861a4885.
+        // Earlier 50.x re-filters live actors, then dereferences a nonexistent
+        // clone record when a window arrives during a retained snapshot.
+        this.overrides.add(WorkspaceAnimation.WorkspaceGroup.prototype, '_syncStacking', () => function () {
+            const stackIndeces = new Map(global.get_window_actors().map((actor, i) => [actor, i]));
+            this._windowRecords.sort((a, b) => stackIndeces.get(a.windowActor) - stackIndeces.get(b.windowActor));
+            let lastRecord;
+            const bottomActor = this._background ?? null;
+            for (const record of this._windowRecords) {
+                this.set_child_above_sibling(record.clone, lastRecord ? lastRecord.clone : bottomActor);
+                lastRecord = record;
+            }
+        });
+    }
+
+    destroy() {
+        this.overrides.clear();
+    }
+}
 
 export function assertSupportedVersion(version, metadata) {
     const match = /^(\d+)\.\d+(?:\.\d+)?$/.exec(version);
@@ -24,6 +58,8 @@ export function requireMethods(object, names, label) {
 
 export function assertShellCompatibility(metadata) {
     assertSupportedVersion(Config.PACKAGE_VERSION, metadata);
+    if (requiresWorkspaceStackingFix(Config.PACKAGE_VERSION))
+        requireMethods(WorkspaceAnimation.WorkspaceGroup?.prototype, ['_syncStacking'], 'GNOME 50 WorkspaceGroup');
     requireMethods(Meta.Window?.prototype, ['activate', 'activate_with_workspace', 'get_transient_for', 'foreach_transient'], 'Meta.Window');
     requireMethods(Meta.Workspace?.prototype, ['activate_with_focus'], 'Meta.Workspace');
     requireMethods(Shell.App?.prototype, ['activate', 'activate_full', 'activate_window', 'get_windows'], 'Shell.App');

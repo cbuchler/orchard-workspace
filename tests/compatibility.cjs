@@ -19,7 +19,9 @@ const Main = {wm: {...methods(['_shouldAnimate', 'actionMoveWindow', 'actionMove
     _workspaceAnimation: methods(['_prepareWorkspaceSwitch', '_findMonitorGroup', '_finishWorkspaceSwitch', 'animateSwitch', 'cancelSwitchAnimation'])},
     overview: {_overview: {controls: {_workspacesDisplay: display}}}};
 const Config = {PACKAGE_VERSION: '51.0'};
+class WorkspaceGroup { _syncStacking() {} }
 const ctx = vm.createContext({Config, Meta: {Window, Workspace}, Shell: {App}, Main,
+    WorkspaceAnimation: {WorkspaceGroup},
     global: {display: methods(['sort_windows_by_stacking', 'xserver_time_is_before']),
         stage: methods(['connectObject', 'disconnectObject'])}, Extension: class {}});
 vm.runInContext(source + '\nthis.api = {assertSupportedVersion, assertShellCompatibility, requireMethods, SUPPORTED_MAJORS};', ctx);
@@ -37,6 +39,10 @@ delete display._moveToWorkspace;
 Object.assign(display, methods(['_onKeyPressEvent', 'prepareToLeaveOverview']));
 Config.PACKAGE_VERSION = '50.0';
 assert.doesNotThrow(() => assertShellCompatibility(both), 'GNOME 50 legacy API shape is accepted');
+const nativeStacking = WorkspaceGroup.prototype._syncStacking;
+delete WorkspaceGroup.prototype._syncStacking;
+assert.throws(() => assertShellCompatibility(both), /incompatible GNOME 50 WorkspaceGroup: _syncStacking/);
+WorkspaceGroup.prototype._syncStacking = nativeStacking;
 display._moveToWorkspace = nativeMove;
 Config.PACKAGE_VERSION = '51.0';
 
