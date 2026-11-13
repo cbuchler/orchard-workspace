@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Compatibility
+
+- Declare GNOME Shell 50 and 51 support under the current/previous stable-major policy. Add a GNOME 50 Overview keyboard adapter and the upstream restacking repair needed by GNOME 50.0–50.3 when a window arrives during a slide. Detect required incompatible internals before activation, and restore compatibility hooks on disable.
+- Run 16 source/model suites against pinned GNOME 50.0, 50.6, 51.0 and 51.1 sources in CI, with exact hashes and scheduled stable-release monitoring. Isolated GNOME Shell/Mutter 50.1 checks pass 30 shortcut cases and ten focused animation/Overview/fullscreen cases on extracted official packages using host common libraries. Physical-desktop and complete GNOME 50 distribution acceptance remain separate; see [exact evidence and limits](docs/GNOME_COMPATIBILITY.md).
+
 ### Fixed
 
 - Route native directional, numbered and last-workspace shortcuts through each display's logical desktop order. Window moves use the focused window's display, and boundary actions do not add desktops.

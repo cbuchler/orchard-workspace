@@ -78,5 +78,6 @@ const workflow = fs.readFileSync(path.join(root, '.github/workflows/gnome-compat
 const versions = workflow.match(/gnome: \[([^\]]+)\]/)[1].match(/'([^']+)'/g).map(value => value.slice(1, -1));
 assert.deepEqual(versions.sort(), lock.sources.map(item => item.version).sort(), 'CI must cover exactly the locked current/previous versions');
 const metadata = JSON.parse(fs.readFileSync(path.join(root, 'metadata.json'), 'utf8'));
-assert(metadata['shell-version'].every(major => ctx.api.SUPPORTED_MAJORS.includes(major)));
+assert.deepEqual(metadata['shell-version'].slice().sort(), Array.from(ctx.api.SUPPORTED_MAJORS).sort(),
+    'validated metadata must declare exactly the current/previous stable pair');
 console.log('PASS: stable current/previous version policy, metadata gate, both API variants, startup failure before mutations, immutable source lock and exact CI matrix');

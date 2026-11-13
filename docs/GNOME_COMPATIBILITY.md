@@ -5,9 +5,9 @@ predecessor: **51.x and 50.x**. Alpha, beta and release-candidate tags do not
 advance this window. When 52.0 becomes stable, the target becomes 52.x/51.x.
 Eligibility under this policy does not establish runtime compatibility.
 
-`metadata.json` currently declares **51 only**. GNOME 50 must remain undeclared
-until the live acceptance gate below passes. Do not disable Shell's version
-validation to install an unvalidated release.
+`metadata.json` declares exactly **50 and 51**. The GNOME 50 adapters passed
+source checks and isolated real GNOME 50.1 compositor checks before this
+declaration was widened. Keep Shell's normal version validation enabled.
 
 ## Automated evidence
 
@@ -78,10 +78,37 @@ settings, cancellation, monitor changes and repeated enable/disable cleanup.
 Track this evidence in [live acceptance issue #3](https://github.com/cbuchler/orchard-workspace/issues/3).
 An isolated session counts only for its actual matching compositor/runtime;
 GNOME 50 source fixtures on a GNOME 51 host do not count as live GNOME 50.
-No GNOME 50 live acceptance artifact was available when this infrastructure was
-added. Metadata remains 51 pending that gate. Passing source/model CI, extension
-ACTIVE state, and error-free startup each establish a narrower fact than the
-full acceptance matrix.
+Passing source/model CI, extension ACTIVE state, and error-free startup each
+establish a narrower fact than the full acceptance matrix.
+
+### Evidence snapshot: 2026-11-13
+
+| Version | Evidence and limits |
+| --- | --- |
+| 50.0, 50.6, 51.0, 51.1 upstream source | All 16 JavaScript source/model suites pass on each immutable pin (64 passes), plus four release-monitor policy tests. These are not four live runtime acceptances. |
+| GNOME Shell 50.1 / Mutter 50.1 | Official Ubuntu resolute packages were checksum-verified and extracted into a user-only prefix, with matching GNOME 50 core schemas. They ran on host common libraries and fallback schemas, with a private D-Bus/settings session and two virtual monitors. Thirty fixed-workspace shortcut cases and ten focused arrival/restacking, rapid-reversal, native-switch, Overview and fullscreen cases passed across both display directions. No runtime JavaScript errors were reported in those cases. |
+| Installed GNOME Shell 51.0 | Compatibility startup/native-right smoke passed. Broader and final integrated-candidate GNOME 51 checks are tracked separately in issue #3. |
+
+The GNOME 50 runtime candidate contains the reviewed early-50 restacking repair;
+later integrated candidates require their own recorded revision and checks.
+This validates the tested isolated runtime, not a complete GNOME 50 distribution,
+physical-monitor visual acceptance, hardware touchpad input, every dynamic-mode
+path, or live GNOME 50.6/51.1 maintenance builds. Compositor shutdown diagnostics
+were retained separately: some runs report native `dateMenu` / `messageTray`
+teardown errors after the scenario finished. A passing scenario does not claim
+error-free compositor shutdown.
+
+Machine-local evidence from this run:
+
+- `/tmp/orchard-live-gnome-50-shortcut-matrix/results.json` — 30/30 cases.
+- `/tmp/orchard-live-gnome-50-restack-fixed/results.json` — 10/10 focused cases.
+- `/tmp/orchard-compat-sources/removal-integrated-final-results.json` — exact source hashes and 64 suite results.
+- `~/.local/state/orchard-workspace/gnome-50-runtime-20261113/packages.json`
+  and `schema-provenance.json` — official package URLs/checksums and all private schema inputs.
+
+These local artifacts are not downloadable release attachments. Preserve and
+attach the relevant manifests/results through issue #3 and release evidence;
+include final integrated-candidate checks separately from this snapshot.
 
 ## Maintenance process
 

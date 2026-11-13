@@ -1,6 +1,6 @@
 # Orchard Workspace
 
-A GNOME Shell 51 extension for switching workspaces on one display at a time. Move the pointer to a display and switch workspaces; the other displays stay in place. You can also switch all displays together.
+A GNOME Shell 50/51 extension for switching workspaces on one display at a time. Move the pointer to a display and switch workspaces; the other displays stay in place. You can also switch all displays together.
 
 Orchard builds on [Active Monitor Workspaces](https://github.com/IndyDevGuy/active-monitor-workspaces). It lets you add workspaces to each display, gives fullscreen windows temporary workspaces, and works with GNOME's desktop gestures and overview.
 
@@ -47,7 +47,7 @@ GNOME may focus a newer transient window instead of the requested app window. Or
 
 ## Requirements and limitations
 
-- Requires GNOME Shell 51. Automated tests cover the code, but workspace management and overview changes still need testing on a live desktop.
+- Supports exactly the current stable GNOME Shell major and its predecessor: currently 51.x and 50.x. Source checks cover 50.0, 50.6, 51.0 and 51.1; isolated real-window GNOME 50.1 checks pass on extracted official Shell/Mutter packages using host common libraries. This does not establish full GNOME 50 distribution or physical-desktop acceptance. See the [compatibility policy and exact evidence](docs/GNOME_COMPATIBILITY.md).
 - In GNOME **Settings → Multitasking**, choose **Workspaces on all displays**. Orchard leaves this setting and your choice of fixed or dynamic workspaces to you.
 - GNOME still has one shared set of workspaces. Orchard gives each display its own list drawn from that set and adds workspaces when needed. In dynamic mode, Orchard keeps the workspaces it uses; GNOME manages the rest.
 - Disabling Orchard leaves windows where they are. GNOME resumes its normal rules and may remove empty dynamic workspaces. Orchard saves its workspace lists only for the current session. When you enable it again, it rebuilds those lists from occupied workspaces; manually added empty workspaces do not persist.
@@ -59,7 +59,7 @@ GNOME may focus a newer transient window instead of the requested app window. Or
 
 ## Build and install
 
-You need GNOME Shell 51 and the `gnome-extensions` command. GNOME Shell loads the JavaScript directly, so there are no npm packages to install or JavaScript bundles to build. Only the tests need Node.js.
+You need GNOME Shell 50 or 51 and the `gnome-extensions` command. GNOME Shell loads the JavaScript directly, so there are no npm packages to install or JavaScript bundles to build. Only the tests need Node.js.
 
 From the repository root:
 
@@ -140,7 +140,9 @@ node tests/method-overrides.cjs
 node tests/overview-isolation.cjs
 ```
 
-These tests also need GNOME Shell 51 source files. By default, they use `/usr/bin/gresource` to extract the files from `/usr/lib/gnome-shell/libshell-51.so`:
+For the same four-version source/model matrix used by CI, run `python3 scripts/gnome-source-matrix.py --report /tmp/orchard-gnome-sources.json`. It downloads immutable, hash-checked GNOME source fixtures and needs Python 3 and Node.js. The [compatibility policy](docs/GNOME_COMPATIBILITY.md) explains release monitoring and live validation.
+
+Individual source-backed tests default to `/usr/bin/gresource` extraction from `/usr/lib/gnome-shell/libshell-51.so`:
 
 ```sh
 node tests/gesture-animation.cjs
@@ -176,7 +178,7 @@ node tests/overview-thumbnails.cjs
 node tests/overview-dynamic-geometry.cjs
 ```
 
-Extracting files from the Shell library requires `gresource` with ELF support. The examples use the system binary because other builds may lack it. On other systems, use the variables above to supply extracted GNOME 51 files. The tests share `tests/runtime-source.cjs` to load the extension code; it is not a test itself.
+Extracting files from the Shell library requires `gresource` with ELF support. The examples use the system binary because other builds may lack it. On other systems, use the variables above to supply matching extracted GNOME 50 or 51 files, or use the pinned matrix helper. The tests share `tests/runtime-source.cjs` to load the extension code; it is not a test itself.
 
 The tests use simulated actors and windows. They do not check the appearance or behavior of a live desktop.
 
