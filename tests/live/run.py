@@ -34,6 +34,15 @@ def write_json(path, data):
     path.write_text(json.dumps(data, indent=2) + '\n')
 
 
+def isolated_environment(root):
+    """Apply before starting D-Bus, including its automatically activated services."""
+    return {'XDG_CONFIG_HOME': str(root / 'config'), 'XDG_DATA_HOME': str(root / 'data'),
+            'XDG_CACHE_HOME': str(root / 'cache'), 'XDG_STATE_HOME': str(root / 'state'),
+            'XDG_RUNTIME_DIR': str(root / 'runtime'), 'GSETTINGS_BACKEND': 'keyfile',
+            'GNOME_SHELL_SESSION_MODE': 'user', 'WAYLAND_DISPLAY': 'orchard-test',
+            'XDG_DATA_DIRS': '/usr/local/share:/usr/share', 'LIBGL_ALWAYS_SOFTWARE': '1'}
+
+
 def validate(case, monitor, before, after, intermediate=None):
     """Return concrete invariant failures; unexpected setup never counts as a pass."""
     failures = []
@@ -149,12 +158,8 @@ def worker(args):
     for name in ['config', 'data', 'cache', 'state', 'runtime']:
         (root / name).mkdir(parents=True, exist_ok=True)
     os.chmod(root / 'runtime', 0o700)
-    os.environ.update(XDG_CONFIG_HOME=str(root / 'config'), XDG_DATA_HOME=str(root / 'data'),
-                      XDG_CACHE_HOME=str(root / 'cache'), XDG_STATE_HOME=str(root / 'state'),
-                      XDG_RUNTIME_DIR=str(root / 'runtime'), GSETTINGS_BACKEND='keyfile',
-                      GNOME_SHELL_SESSION_MODE='user', WAYLAND_DISPLAY='orchard-test',
-                      XDG_DATA_DIRS='/usr/local/share:/usr/share', LIBGL_ALWAYS_SOFTWARE='1',
-                      ORCHARD_SHORTCUT_CASE=args.case, ORCHARD_TEST_OUTPUT=str(root))
+    os.environ.update(isolated_environment(root))
+    os.environ.update(ORCHARD_SHORTCUT_CASE=args.case, ORCHARD_TEST_OUTPUT=str(root))
     for key in ['DISPLAY', 'XAUTHORITY', 'SESSION_MANAGER', 'GNOME_KEYRING_CONTROL',
                 'SSH_AUTH_SOCK', 'AT_SPI_BUS_ADDRESS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE']:
         os.environ.pop(key, None)
@@ -302,7 +307,7 @@ def main():
         return
     if args.output and args.output.exists() and any(args.output.iterdir()):
         parser.error('output directory must be empty; preserve earlier evidence')
-    output = args.output or Path(tempfile.mkdtemp(prefix='orchard-live-'))
+    output = (args.output or Path(tempfile.mkdtemp(prefix='orchard-live-'))).resolve()
     output.mkdir(parents=True, exist_ok=True)
     dbus = shutil.which('dbus-run-session')
     if not dbus:
@@ -321,6 +326,9 @@ def main():
         case, monitor = item
         root = output / f'{case}-{monitor}'
         root.mkdir()  # Refuse to overwrite prior evidence.
+        for name in ['config', 'data', 'cache', 'state', 'runtime']:
+            (root / name).mkdir()
+        os.chmod(root / 'runtime', 0o700)
         command = [dbus, '--', '/usr/bin/python3', str(Path(__file__).resolve()), '--worker',
                    '--extension-source', str(source), '--output', str(root), '--case', case,
                    '--monitor', str(monitor), '--shell', args.shell, '--workspace-mode', args.workspace_mode]
@@ -328,6 +336,7 @@ def main():
             command += ['--require-major', args.require_major]
         try:
             environment = os.environ.copy()
+            environment.update(isolated_environment(root))
             environment.update(ORCHARD_LIVE_WORKER_ALLOWED='1',
                                ORCHARD_LIVE_PARENT_BUS=os.environ.get('DBUS_SESSION_BUS_ADDRESS', ''))
             with (root / 'driver.log').open('w') as log:
