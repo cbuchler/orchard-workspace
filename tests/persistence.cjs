@@ -8,7 +8,7 @@ function shell(store, epoch) {
     let serial = 0, nextSource = 0;
     const sources = new Map(), workspaces = [], windows = [];
     let monitors = [{index: 0, key: 'eDP-1', hardware: 'panel'}, {index: 1, key: 'HDMI-1', hardware: 'external'}];
-    const workspace = () => { const ws = {index: () => workspaces.indexOf(ws)}; workspaces.push(ws); return ws; };
+    const workspace = () => { const ws = {index: () => workspaces.indexOf(ws), activate() { active = ws; }}; workspaces.push(ws); return ws; };
     for (let i = 0; i < 4; i++) workspace();
     let active = workspaces[0], enabled = true;
     const global = {get_current_time: () => 1, get_window_actors: () => windows.map(window => ({get_meta_window: () => window})),
@@ -42,7 +42,7 @@ function shell(store, epoch) {
     function window(monitor, ws, type = 1) {
         const w = {get_monitor: () => monitor, get_workspace: () => ws, get_window_type: () => type,
             get_transient_for: () => null, is_on_all_workspaces: () => false, is_override_redirect: () => false,
-            change_workspace() { assert.fail('restoration must not move windows'); }};
+            change_workspace(target) { assert(w.allowMoves, 'restoration must not move windows'); ws = target; }};
         windows.push(w); return w;
     }
     return {start, window, workspaces, windows, sources, parse: ctx.api.parseLayout,
@@ -220,5 +220,29 @@ function shell(store, epoch) {
     assert.deepEqual(Array.from(second.orderForMonitor(0).slots, slot => slot.id), ids);
     assert.equal(JSON.parse(store.text).displays.find(display => display.key === 'eDP-1').selected, ids[2]);
     second.destroy();
+}
+// Once restored, a mode cycle must retain the live slot objects referenced by
+// fullscreen owners. Execute the actual entry/exit paths from a nonfirst origin.
+for (const reconnect of [false, true]) {
+    const store = {}, s = shell(store, 'live-owner'), lifecycle = s.start();
+    const stack = lifecycle.stackForMonitor(0), order = stack.order;
+    const origin = order.insert(1, s.workspaces[1]); order.insert(2, s.workspaces[3]);
+    const owner = s.window(0, origin.workspace); owner.allowMoves = true; s.select(origin.workspace);
+    const state = {window: owner, signals: []}; lifecycle.windows.set(owner, state);
+    lifecycle._enterFullscreen(state, stack); s.persistence.flush();
+    const temporary = state.fullscreen.slot, before = Array.from(order.slots);
+    if (reconnect) {
+        s.setMonitors([{index: 1, key: 'HDMI-1', hardware: 'external'}]);
+        s.setMonitors([{index: 0, key: 'eDP-1', hardware: 'panel'}, {index: 1, key: 'HDMI-1', hardware: 'external'}]);
+    } else {
+        s.setEnabled(false); lifecycle._syncMonitors();
+        s.setEnabled(true); lifecycle._syncMonitors();
+    }
+    assert.deepEqual(Array.from(order.slots), before, 'mode/reconnect preserves live fullscreen slot objects');
+    assert.equal(state.fullscreen.origin, origin); assert.equal(state.fullscreen.slot, temporary);
+    lifecycle._leaveFullscreen(state, true);
+    assert.equal(owner.get_workspace(), origin.workspace, 'fullscreen exits to its nonfirst origin');
+    assert.equal(origin.workspace, s.workspaces[1]);
+    lifecycle.destroy();
 }
 console.log('PASS: versioned layout persistence, runtime identity/renumbering, pruning, fresh-session occupancy and selection, fullscreen exclusion, display identity and recovery/cleanup');

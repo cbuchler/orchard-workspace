@@ -52,25 +52,30 @@ export class LogicalLayoutPersistence {
         this.state = parseLayout(settings.get_string('logical-layout'));
         this.source = 0;
         this.restoring = false;
-        this.wasEnabled = false;
+        this.restoredStacks = new WeakSet();
     }
 
     restore(stacks = [...this.lifecycle.stacks.values()]) {
-        const enabled = this.lifecycle.configuration.automaticSwitchingIsEnabled();
-        const entering = enabled && !this.wasEnabled;
-        this.wasEnabled = enabled;
-        if (!this.state || !enabled) return;
+        if (!this.lifecycle.configuration.automaticSwitchingIsEnabled()) return;
+        const connected = [...this.lifecycle.stacks.values()].filter(stack => stack.index !== null);
         // Enabling per-display mode must restore all recognized displays even
         // if they were already connected while restoration was disabled.
-        if (entering) stacks = [...this.lifecycle.stacks.values()];
+        // Already initialized live orders retain their slot/return identities.
+        stacks = [...new Set([...stacks, ...connected.filter(stack => !this.restoredStacks.has(stack))])];
+        for (const stack of connected) this.restoredStacks.add(stack);
+        if (!this.state) return;
         this.restoring = true;
         try {
             const records = this.state.displays;
-            const connected = [...this.lifecycle.stacks.values()].filter(stack => stack.index !== null);
             const claimed = new Set(connected.filter(stack => !stacks.includes(stack)).map(stack => stack.savedLayout));
             // Exact connector + hardware wins. Hardware-only matching is safe
             // only when both current and saved identities are unambiguous.
             for (const stack of stacks.filter(item => item.index !== null)) {
+                // Reconnecting a live stack must not replace objects still
+                // referenced by an owner's fullscreen return chain. Lifecycle
+                // reconciliation will handle any compositor-driven migration.
+                if (stack.order.slots.some(slot => slot.owner) || [...this.lifecycle.windows.values()]
+                    .some(state => state.fullscreen?.stack === stack)) continue;
                 let saved = records.find(record => !claimed.has(record) && record.key === stack.key &&
                     (!record.hardware || !stack.hardware || record.hardware === stack.hardware));
                 if (!saved && stack.hardware) {
