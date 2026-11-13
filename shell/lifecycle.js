@@ -271,24 +271,24 @@ export class LogicalWorkspaceLifecycle {
         return workspace;
     }
 
-    addWorkspace(monitor = this.resolver.resolve(), activate = true) {
+    addWorkspace(monitor = this.animation?.selectedMonitor ?? this.resolver.resolve(), activate = true) {
         this.configuration.conditionallyEnableAutomaticSwitching();
         if (!this.configuration.automaticSwitchingIsEnabled()) return null;
         const stack = this.stackForMonitor(monitor);
         if (!stack) return null;
         const slot = stack.order.insert(stack.order.slots.length, this._freeBacking(stack));
         this._changed();
-        if (activate) this.activate(stack, slot);
+        if (activate) this.activate(stack, slot, {animate: true});
         return slot;
     }
 
     switchWorkspace(direction) {
-        const stack = this.stackForMonitor(this.resolver.resolve());
+        const stack = this.stackForMonitor(this.animation?.selectedMonitor ?? this.resolver.resolve());
         if (!stack) return;
         const active = global.workspace_manager.get_active_workspace();
         const current = stack.order.slots.findIndex(slot => slot.workspace === active);
         const slot = stack.order.slots[current + direction];
-        if (slot) this.activate(stack, slot);
+        if (slot) this.activate(stack, slot, {animate: true});
     }
 
     activate(stack, slot, {animate = false} = {}) {

@@ -71,7 +71,7 @@ export class WorkspaceSwitcher {
             // A real window activation supersedes an older gesture/keyboard
             // selection. Cancel only after a switch actually occurs, so a
             // rejected activation cannot interrupt the user's current motion.
-            this.animation.cancel();
+            this.animation.cancel({activationFamily: this.resolver.activation?.family});
             this.overview?._session?.navigation?.cancel();
         }
         const monitor = windowMonitor ?? activationMonitor ?? this.lifecycle?.forcedMonitor ?? this.animation.selectedMonitor ?? this.overview?.selectedMonitor ?? this.resolver.resolve();

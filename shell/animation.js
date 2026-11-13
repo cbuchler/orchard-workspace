@@ -12,7 +12,7 @@
 // Do NOT upload to extensions.gnome.org (EGO) unless you understand JavaScript
 // and can maintain this code.
 
-
+import GLib from 'gi://GLib';
 import {MethodOverrides} from './methodOverrides.js';
 import {KeyboardWorkspaceAnimation} from './keyboardAnimation.js';
 
@@ -24,6 +24,8 @@ export class MonitorWorkspaceAnimation {
         this._resolver = monitorResolver;
         this._lifecycle = lifecycle;
         this._session = null;
+        this._pendingMovingWindow = null;
+        this._movingWindowIdle = 0;
         this._overrides = new MethodOverrides();
         this._keyboard = new KeyboardWorkspaceAnimation(controller, configurationService, monitorResolver, lifecycle);
     }
@@ -40,6 +42,12 @@ export class MonitorWorkspaceAnimation {
                     nativeArgs = [order.workspaces.map(workspace => workspaces.indexOf(workspace))];
             }
             const result = original.apply(this, nativeArgs);
+            // Once native groups have captured the moving window, their
+            // ordinary teardown owns clearing it again.
+            if (animation._pendingMovingWindow === this.movingWindow) {
+                animation._pendingMovingWindow = null;
+                animation._clearMovingWindowIdle();
+            }
             // Explicit indices are the keyboard path. Its window snapshot
             // timing is different, so apply monitor pinning only to gestures.
             if (!previous && !args[0] && this._switchData) {
@@ -125,18 +133,48 @@ export class MonitorWorkspaceAnimation {
         }
     }
 
-    cancel() {
-        this._keyboard.cancel();
-        const session = this._session;
-        if (!session) return;
-        if (this._controller._switchData === session.switchData) {
-            // Stop completion callbacks before cancelling (disable/hotplug).
-            for (const group of session.switchData.monitors)
-                group.remove_all_transitions();
-            this._controller._finishWorkspaceSwitch(session.switchData);
-        } else {
-            this._releaseSession();
+    cancel({activationFamily = null} = {}) {
+        this._clearMovingWindowIdle();
+        const movingWindow = this._controller.movingWindow;
+        const preserve = activationFamily?.has(movingWindow);
+        if (this._pendingMovingWindow === movingWindow && !preserve)
+            this._controller.movingWindow = null;
+        this._pendingMovingWindow = null;
+        try {
+            this._keyboard.cancel();
+            const session = this._session;
+            if (!session) return;
+            if (this._controller._switchData === session.switchData) {
+                // Stop completion callbacks before cancelling (disable/hotplug).
+                for (const group of session.switchData.monitors)
+                    group.remove_all_transitions();
+                this._controller._finishWorkspaceSwitch(session.switchData);
+            } else {
+                this._releaseSession();
+            }
+        } finally {
+            // Native actionMoveWindow assigns this before activating. Finishing
+            // the previous slide clears it, but the replacement still needs it.
+            if (preserve) {
+                this._controller.movingWindow = movingWindow;
+                this._pendingMovingWindow = movingWindow;
+                // Overview/nonanimated activation may never prepare groups.
+                // Do not let its unused marker affect an unrelated later slide.
+                this._movingWindowIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                    this._movingWindowIdle = 0;
+                    if (this._controller.movingWindow === this._pendingMovingWindow)
+                        this._controller.movingWindow = null;
+                    this._pendingMovingWindow = null;
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
         }
+    }
+
+    _clearMovingWindowIdle() {
+        if (this._movingWindowIdle)
+            GLib.source_remove(this._movingWindowIdle);
+        this._movingWindowIdle = 0;
     }
 
     destroy() {

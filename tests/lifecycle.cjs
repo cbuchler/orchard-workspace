@@ -140,7 +140,8 @@ for (const dynamic of [false, true]) {
     for (const [window, workspace] of positions) assert.equal(window.workspace, workspace, 'disable preserves actual window placement');
     assert(s.windows.every(w => w.handlers.size === 0));
     assert.equal(s.display.handlers.size, 0); assert.equal(s.layout.handlers.size, 0);
-    assert(s.animationDecisions.every(value => value === false), 'native GNOME animation gate suppresses only Orchard activations');
+    assert.equal(s.animationDecisions[0], true, 'ordinary desktop creation keeps the native animation decision');
+    assert(s.animationDecisions.slice(1).every(value => value === false), 'fullscreen-owned activations remain immediate');
     assert.equal(s.Main.wm._shouldAnimate(), true, 'disable restores native animation decision');
 }
 // Fullscreen belongs immediately after its stable origin, even when that

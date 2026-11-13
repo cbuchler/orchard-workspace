@@ -133,10 +133,11 @@ function setup({selected = 1, primary = 0, vertical = false, rtl = false, primar
             prefs_get_workspaces_only_on_primary: () => primaryOnly},
         Layout: {MonitorConstraint: class {}}, SwipeTracker: {SwipeTracker: Tracker},
         WorkspaceGroup: class extends Actor {
-            constructor(workspace, monitor) {
+            constructor(workspace, monitor, movingWindow) {
                 super(); this.workspace = workspace;
                 this.snapshotWindows = fixtures.filter(w => w.monitor === monitor.index &&
-                    w.workspace === workspace?.index()).map(w => w.id);
+                    (workspace ? w !== movingWindow && !w.sticky && w.workspace === workspace.index()
+                        : w === movingWindow || w.sticky)).map(w => w.id);
             }
         },
         WORKSPACE_SPACING: 100, WINDOW_ANIMATION_TIME: 250,
@@ -152,7 +153,7 @@ function setup({selected = 1, primary = 0, vertical = false, rtl = false, primar
             }},
     });
     vm.runInContext(`${nativeSource}\nthis.Controller = WorkspaceAnimationController;`, ctx);
-    vm.runInContext(`${extensionSource}\nthis.Animation = MonitorWorkspaceAnimation;`, ctx);
+    vm.runInContext(`${extensionSource}\nthis.Animation = MonitorWorkspaceAnimation; this.Switcher = WorkspaceSwitcher;`, ctx);
     // Construct first: Shell binds begin/update/end before our hooks exist.
     const controller = new ctx.Controller();
     const animation = new ctx.Animation(controller, {
@@ -221,7 +222,7 @@ function setup({selected = 1, primary = 0, vertical = false, rtl = false, primar
             idles.delete(id); callback();
         }
     };
-    return {state, controller, animation, begin, update, end, tick, groups, painted, clean,
+    return {state, controller, animation, begin, update, end, tick, groups, painted, clean, Switcher: ctx.Switcher,
         wm, kill, switchTo, advance, flushIdle, idles, timelines, workspaces};
 }
 
@@ -587,3 +588,41 @@ console.log('PASS: window snapshot timing, inactive-display content and stationa
     t.advance(300); t.clean(); t.animation.destroy();
 }
 console.log('PASS: keyboard display selection is locked only for the active slide');
+
+// Native move sets movingWindow before activating its destination. That
+// activation cancels the old slide through the real switcher; its teardown
+// must not erase moving-window ownership needed by the replacement snapshot.
+for (const mode of ['replacement', 'disable', 'cancel', 'idle', 'unrelated']) {
+    const moving = {id: 'moving', monitor: 1, workspace: 1};
+    const t = setup({selected: 1, fixtures: [moving]});
+    t.switchTo(1); t.advance(80);
+    const resolver = {activationMonitor: 1, activation: {family: new Set(mode === 'unrelated' ? [] : [moving])}, resolve: () => 0};
+    const switcher = new t.Switcher({automaticSwitchingIsEnabled: () => true}, resolver, t.animation);
+    switcher.movableWindows = () => [];
+    t.controller.movingWindow = moving;
+    t.state.active = 2;
+    switcher.onGlobalWorkspaceChanged();
+    assert.equal(t.controller.movingWindow, mode === 'unrelated' ? null : moving,
+        'only the requested moving window survives old-slide teardown');
+    if (mode === 'replacement') {
+        moving.workspace = 2;
+        t.state.active = 1; t.switchTo(2);
+        const group = t.groups()[1];
+        const sticky = group.children.find(child => child.snapshotWindows);
+        assert.deepEqual(sticky.snapshotWindows, ['moving'], 'replacement keeps the moving window stationary');
+        assert(group._workspaceGroups.every(item => !item.snapshotWindows.includes('moving')),
+            'moving window must not also slide with workspace snapshots');
+        assert.equal(t.animation._pendingMovingWindow, null, 'native groups consume restored ownership');
+        assert.equal(t.idles.size, 0, 'replacement removes the unused-marker expiry');
+        t.advance(300); t.tick(1); t.clean();
+    }
+    if (mode === 'cancel') t.animation.cancel();
+    if (mode === 'idle') {
+        t.flushIdle();
+        assert.equal(t.controller.movingWindow, null, 'nonanimated activation expires its unused marker');
+    }
+    t.animation.destroy();
+    assert.equal(t.controller.movingWindow, null, 'disable still clears moving-window ownership');
+    assert.equal(t.idles.size, 0, 'cancel/disable removes owned expiry callback');
+}
+console.log('PASS: interrupted native move retains only requested moving-window stickiness, replacement consumes ownership, and cancellation/disable clear it');
