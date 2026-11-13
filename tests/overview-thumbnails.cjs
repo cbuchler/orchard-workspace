@@ -144,6 +144,7 @@ const primary = view(), secondary = view(), primaryBox = box(0), secondaryBox = 
 const secondaryHost = Object.assign(new Signals(), {_workspacesView: secondary, _thumbnails: secondaryBox,
     startTouchGesture() {}, endTouchGesture() {}});
 const display = {_workspacesViews: [primary, secondaryHost], _scrollAdjustment: shared,
+    _updateWorkspacesViews() {},
     _endTouchGesture() { primary.endTouchGesture(); secondary.endTouchGesture(); }};
 overview._overview = {controls: {_workspacesDisplay: display, _thumbnailsBox: primaryBox}};
 const config = {conditionallyEnableAutomaticSwitching() {}, automaticSwitchingIsEnabled: () => true};

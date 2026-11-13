@@ -10,6 +10,7 @@ import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as SwipeTracker from 'resource:///org/gnome/shell/ui/swipeTracker.js';
 import {MethodOverrides} from './methodOverrides.js';
+import {installOverviewKeyboard} from './compatibility.js';
 
 // GNOME 51's overview callbacks close over physical indices. Keep the shared
 // Shell adjustment physical, but render each monitor in its own logical space.
@@ -29,6 +30,7 @@ export class OverviewNavigation {
         this.actorOwners = [];
         this.actorActions = [];
         this.trackerSignalIds = [];
+        this.keyboardCleanup = null;
     }
 
     start() {
@@ -122,9 +124,8 @@ export class OverviewNavigation {
             ['end', (_tracker, duration, progress) => this.end(duration, progress)],
         ]) this.trackerSignalIds.push(this.tracker.connect(signal, callback));
         session.display._updateSwipeTracker();
-        this.overrides.add(session.display, '_moveToWorkspace', original => function (direction) {
-            return session.navigation.withNeighbors(() => original.call(this, direction));
-        });
+        this.keyboardCleanup = installOverviewKeyboard(this.overrides, session.display,
+            (action, boundary) => this.withNeighbors(action, boundary));
         this.overrides.add(Main.wm, 'handleWorkspaceScroll', original => function (...args) {
             return session.navigation.withNeighbors(() => original.apply(this, args));
         });
@@ -280,11 +281,16 @@ export class OverviewNavigation {
         this.finish();
     }
 
-    withNeighbors(action) {
+    withNeighbors(action, boundary = null) {
         if (this.session.gesture) this.cancel();
         this.isolation._updateSelection();
         const record = this.session.records.find(item => item.index === this.session.selected);
         if (!record) return action();
+        if (boundary) {
+            const workspace = boundary === 'first' ? record.order.workspaces[0] : record.order.workspaces.at(-1);
+            if (workspace) Main.wm.actionMoveWorkspace(workspace);
+            return Clutter.EVENT_STOP;
+        }
         const workspace = global.workspace_manager.get_active_workspace();
         const hooks = new MethodOverrides();
         hooks.add(workspace, 'get_neighbor', original => direction => {
@@ -305,6 +311,8 @@ export class OverviewNavigation {
 
     stop() {
         this.cancel();
+        this.keyboardCleanup?.();
+        this.keyboardCleanup = null;
         const {session} = this;
         const manager = global.workspace_manager;
         for (const id of this.managerSignals) manager.disconnect(id);

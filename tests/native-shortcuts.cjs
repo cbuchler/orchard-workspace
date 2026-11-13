@@ -70,6 +70,7 @@ function setup({indices = [0, 3], activeIndex = indices[0], monitor = 0, enabled
         layoutManager: {primaryIndex: 0, monitors: [0, 1].map(index =>
             ({index, x: index * 100, y: 0, width: 100, height: 100}))}, wm: {
             _workspaceAnimation: {gestureActive: false}, _allowedKeybindings: {},
+            _workspaceTracker: {blockUpdates() {}, unblockUpdates() {}},
             blockWorkspaceUpdates() {}, unblockWorkspaceUpdates() {},
             insertWorkspace() { inserts++; workspaces.push(new Workspace()); }, _isWorkspacePrepended: false,
         }};

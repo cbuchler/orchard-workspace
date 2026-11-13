@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "currentMajor": "51",
+  "previousMajor": "50",
+  "repository": "GNOME/gnome-shell",
+  "sources": [
+    {
+      "version": "50.0",
+      "commit": "aecaec6ad79e5f77e19d590d746d0f4c06825420",
+      "files": {
+        "animationUtils.js": {
+          "path": "js/misc/animationUtils.js",
+          "sha256": "3f0674564ef1de3b8052bb8bdab120a9e734ee35c2251e139241a58687c6546b"
+        },
+        "environment.js": {
+          "path": "js/ui/environment.js",
+          "sha256": "e85143835ee05682bfac6c5f8e88f8a6f00862131396cd0ac05d6226a5fea6af"
+        },
+        "main.js": {
+          "path": "js/ui/main.js",
+          "sha256": "3a6de442c2478329e18f0658b8ff25cb4d681ce05fae981c616169403c3b6cd4",
+          "env": "ORCHARD_MAIN_SOURCE"
+        },
+        "swipeTracker.js": {
+          "path": "js/ui/swipeTracker.js",
+          "sha256": "2fd732709b3bcc216311233f27021d770320d7f09ed3e9372214da016b80b361",
+          "env": "ORCHARD_SWIPE_SOURCE"
+        },
+        "windowManager.js": {
+          "path": "js/ui/windowManager.js",
+          "sha256": "42560215fea202623f22d66865c9fa29e9c0c0ca8f6ac53a211a452c8ba9816f",
+          "env": "ORCHARD_WM_SOURCE"
+        },
+        "workspace.js": {
+          "path": "js/ui/workspace.js",
+          "sha256": "28410221381aef538001ef0092b8124ba117f4c12446c861ee96ef559c94b8df",
+          "env": "ORCHARD_WORKSPACE_SOURCE"
+        },
+        "workspaceAnimation.js": {
+          "path": "js/ui/workspaceAnimation.js",
+          "sha256": "79748d3556bf54ed57f37d93e9a4e39a6aecd7c3f8931b2c50f3df55d337ad17",
+          "env": "AMW_SHELL_ANIMATION_SOURCE"
+        },
+        "workspaceThumbnail.js": {
+          "path": "js/ui/workspaceThumbnail.js",
+          "sha256": "aea383ff14303dcec5ae516e3c823a9477245a6beec5aa83e88e9764d0a565f5",
+          "env": "ORCHARD_THUMBNAIL_SOURCE"
+        },
+        "workspacesView.js": {
+          "path": "js/ui/workspacesView.js",
+          "sha256": "16faecf9dffeb391e3d9d2d692d9981628c541eaf0a202e80d1b8b5e44f43ca3",
+          "env": "ORCHARD_OVERVIEW_SOURCE"
+        }
+      }
+    },
+    {
+      "version": "50.6",
+      "commit": "f56828ce31c9c68a808ee63692368d36802c95dc",
+      "files": {
+        "animationUtils.js": {
+          "path": "js/misc/animationUtils.js",
+          "sha256": "8070eda0ef05cddfc4b6bb5936ef19cfdf8392232dbde5a987a4e8b243aa63bf"
+        },
+        "environment.js": {
+          "path": "js/ui/environment.js",
+          "sha256": "e4986e7fcacb4d86aea84e08a16ee09c3e7313e6c16f8aa410bc4932d6dee4a1"
+        },
+        "main.js": {
+          "path": "js/ui/main.js",
+          "sha256": "2926d1cee2d2f8eaf1faa3beda73f7e6a10a57a72d16dfc04d211ec58281e948",
+          "env": "ORCHARD_MAIN_SOURCE"
+        },
+        "swipeTracker.js": {
+          "path": "js/ui/swipeTracker.js",
+          "sha256": "2fd732709b3bcc216311233f27021d770320d7f09ed3e9372214da016b80b361",
+          "env": "ORCHARD_SWIPE_SOURCE"
+        },
+        "windowManager.js": {
+          "path": "js/ui/windowManager.js",
+          "sha256": "bbbb614397b60e10a542e5d23ddce91322156381da33a82eda61be59a67f2c49",
+          "env": "ORCHARD_WM_SOURCE"
+        },
+        "workspace.js": {
+          "path": "js/ui/workspace.js",
+          "sha256": "357389c7b22e36199e0ed6897fafed6335494e872646b013820ca97aafb24732",
+          "env": "ORCHARD_WORKSPACE_SOURCE"
+        },
+        "workspaceAnimation.js": {
+          "path": "js/ui/workspaceAnimation.js",
+          "sha256": "c576efa015dae46d8a141658080b691e135a59e36c6acc12841d0b1c5f3c70f3",
+          "env": "AMW_SHELL_ANIMATION_SOURCE"
+        },
+        "workspaceThumbnail.js": {
+          "path": "js/ui/workspaceThumbnail.js",
+          "sha256": "64eb841ade910d62ea5c15b98ca897785e0c77428e69c62388a65e4599adc881",
+          "env": "ORCHARD_THUMBNAIL_SOURCE"
+        },
+        "workspacesView.js": {
+          "path": "js/ui/workspacesView.js",
+          "sha256": "16faecf9dffeb391e3d9d2d692d9981628c541eaf0a202e80d1b8b5e44f43ca3",
+          "env": "ORCHARD_OVERVIEW_SOURCE"
+        }
+      }
+    },
+    {
+      "version": "51.0",
+      "commit": "2177bdf9624b2d285de7c1d34274073d3769d6b8",
+      "files": {
+        "animationUtils.js": {
+          "path": "js/misc/animationUtils.js",
+          "sha256": "8070eda0ef05cddfc4b6bb5936ef19cfdf8392232dbde5a987a4e8b243aa63bf"
+        },
+        "environment.js": {
+          "path": "js/ui/environment.js",
+          "sha256": "357e292f3da019d603f4c52d0c2a19fcce0a15e82d74dd6e726b097a37977b30"
+        },
+        "main.js": {
+          "path": "js/ui/main.js",
+          "sha256": "0d6a069faa68f9b919b02e0c1891dbc38ab2066f1c7ff15f3d98bd618f25532f",
+          "env": "ORCHARD_MAIN_SOURCE"
+        },
+        "swipeTracker.js": {
+          "path": "js/ui/swipeTracker.js",
+          "sha256": "2fd732709b3bcc216311233f27021d770320d7f09ed3e9372214da016b80b361",
+          "env": "ORCHARD_SWIPE_SOURCE"
+        },
+        "windowManager.js": {
+          "path": "js/ui/windowManager.js",
+          "sha256": "b7a7e6ea249f77496f5b84f76d1b3ee7f14f2c3d659392513998b3c46827ae47",
+          "env": "ORCHARD_WM_SOURCE"
+        },
+        "workspace.js": {
+          "path": "js/ui/workspace.js",
+          "sha256": "357389c7b22e36199e0ed6897fafed6335494e872646b013820ca97aafb24732",
+          "env": "ORCHARD_WORKSPACE_SOURCE"
+        },
+        "workspaceAnimation.js": {
+          "path": "js/ui/workspaceAnimation.js",
+          "sha256": "c576efa015dae46d8a141658080b691e135a59e36c6acc12841d0b1c5f3c70f3",
+          "env": "AMW_SHELL_ANIMATION_SOURCE"
+        },
+        "workspaceThumbnail.js": {
+          "path": "js/ui/workspaceThumbnail.js",
+          "sha256": "aea383ff14303dcec5ae516e3c823a9477245a6beec5aa83e88e9764d0a565f5",
+          "env": "ORCHARD_THUMBNAIL_SOURCE"
+        },
+        "workspacesView.js": {
+          "path": "js/ui/workspacesView.js",
+          "sha256": "f9c34bdd476e0ab0f5fa7062c7dc47e6618c74e732ed3faf4f435f570957bf13",
+          "env": "ORCHARD_OVERVIEW_SOURCE"
+        }
+      }
+    },
+    {
+      "version": "51.1",
+      "commit": "33da06854e229c256afd5872fedd83c28cbfa176",
+      "files": {
+        "animationUtils.js": {
+          "path": "js/misc/animationUtils.js",
+          "sha256": "8070eda0ef05cddfc4b6bb5936ef19cfdf8392232dbde5a987a4e8b243aa63bf"
+        },
+        "environment.js": {
+          "path": "js/ui/environment.js",
+          "sha256": "357e292f3da019d603f4c52d0c2a19fcce0a15e82d74dd6e726b097a37977b30"
+        },
+        "main.js": {
+          "path": "js/ui/main.js",
+          "sha256": "0d6a069faa68f9b919b02e0c1891dbc38ab2066f1c7ff15f3d98bd618f25532f",
+          "env": "ORCHARD_MAIN_SOURCE"
+        },
+        "swipeTracker.js": {
+          "path": "js/ui/swipeTracker.js",
+          "sha256": "2fd732709b3bcc216311233f27021d770320d7f09ed3e9372214da016b80b361",
+          "env": "ORCHARD_SWIPE_SOURCE"
+        },
+        "windowManager.js": {
+          "path": "js/ui/windowManager.js",
+          "sha256": "b7a7e6ea249f77496f5b84f76d1b3ee7f14f2c3d659392513998b3c46827ae47",
+          "env": "ORCHARD_WM_SOURCE"
+        },
+        "workspace.js": {
+          "path": "js/ui/workspace.js",
+          "sha256": "357389c7b22e36199e0ed6897fafed6335494e872646b013820ca97aafb24732",
+          "env": "ORCHARD_WORKSPACE_SOURCE"
+        },
+        "workspaceAnimation.js": {
+          "path": "js/ui/workspaceAnimation.js",
+          "sha256": "c576efa015dae46d8a141658080b691e135a59e36c6acc12841d0b1c5f3c70f3",
+          "env": "AMW_SHELL_ANIMATION_SOURCE"
+        },
+        "workspaceThumbnail.js": {
+          "path": "js/ui/workspaceThumbnail.js",
+          "sha256": "64eb841ade910d62ea5c15b98ca897785e0c77428e69c62388a65e4599adc881",
+          "env": "ORCHARD_THUMBNAIL_SOURCE"
+        },
+        "workspacesView.js": {
+          "path": "js/ui/workspacesView.js",
+          "sha256": "f9c34bdd476e0ab0f5fa7062c7dc47e6618c74e732ed3faf4f435f570957bf13",
+          "env": "ORCHARD_OVERVIEW_SOURCE"
+        }
+      }
+    }
+  ]
+}

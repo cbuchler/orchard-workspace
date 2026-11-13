@@ -37,6 +37,7 @@ const secondaryHost = Object.assign(new Signals(), {_workspacesView: secondary,
     startTouchGesture() { this._workspacesView.startTouchGesture(); },
     endTouchGesture() { this._workspacesView.endTouchGesture(); }});
 const display = {_workspacesViews: [primary, secondaryHost], _scrollAdjustment: shared,
+    _updateWorkspacesViews() {},
     _endTouchGesture() { for (const host of this._workspacesViews) host.endTouchGesture(); }};
 const overview = new Signals(); overview.visible = true; overview.closing = false;
 overview._overview = {controls: {_workspacesDisplay: display}};

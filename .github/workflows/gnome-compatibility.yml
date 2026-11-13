@@ -1,0 +1,53 @@
+name: GNOME compatibility
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 7 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  source-tests:
+    name: GNOME Shell ${{ matrix.gnome }} source/model tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gnome: ['50.0', '50.6', '51.0', '51.1']
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Run against pinned upstream sources
+        run: >-
+          python3 scripts/gnome-source-matrix.py
+          --version '${{ matrix.gnome }}'
+          --report 'artifacts/gnome-${{ matrix.gnome }}.json'
+      - name: Check JavaScript syntax
+        run: |
+          for source in extension.js prefs.js shell/*.js; do
+            node --input-type=module --check < "$source"
+          done
+      - name: Check schemas and whitespace
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          glib-compile-schemas --strict --dry-run schemas
+          git diff --check
+      - name: Preserve exact versions, hashes and results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gnome-${{ matrix.gnome }}-source-model-results
+          path: artifacts/
+          if-no-files-found: error
+  release-monitor:
+    name: Stable GNOME release freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - run: python3 scripts/check-gnome-releases.py

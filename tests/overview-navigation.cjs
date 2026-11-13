@@ -32,6 +32,7 @@ class Signals {
             if (this.signals.has(id) && entry.name === name) entry.cb(this, ...args);
     }
     owned(owner) { return [...this.signals.values()].filter(s => s.owner === owner).length; }
+    add_action_full() {}
 }
 class Adjustment extends Signals {
     constructor(props = {}) { super(); this._value = 0; Object.assign(this, {lower: 0, upper: 4,
@@ -56,10 +57,11 @@ class ActorBox {
     interpolate(other, progress) { return progress < 0.5 ? this.copy() : other.copy(); }
 }
 let workspaces = [], active, selected = 0, enabled = true, activations = 0, destroyedActors = 0;
-const motion = {LEFT: 0, RIGHT: 1, UP: 2, DOWN: 3};
+const motion = {UP: -1, DOWN: -2, LEFT: -3, RIGHT: -4};
 const Clutter = {EVENT_PROPAGATE: 0, EVENT_STOP: 1, TextDirection: {LTR: 0, RTL: 1},
     AnimationMode: {EASE_OUT_CUBIC: 0}, ScrollDirection: {UP: 0, DOWN: 1, LEFT: 2, RIGHT: 3, SMOOTH: 4},
-    EventType: {SCROLL: 1}, ActorBox, get_default_text_direction: () => rtl ? 1 : 0};
+    EventType: {SCROLL: 1}, KEY_Page_Up: 0xff55, KEY_Page_Down: 0xff56, KEY_Home: 0xff50, KEY_End: 0xff57,
+    ActorBox, get_default_text_direction: () => rtl ? 1 : 0};
 let rtl = false;
 const manager = Object.assign(new Signals(), {
     get_n_workspaces: () => workspaces.length, get_workspace_by_index: i => workspaces[i],
@@ -194,16 +196,28 @@ const host = Object.assign(new Signals(), {_workspacesView: secondary, _thumbnai
     startTouchGesture() { secondary.startTouchGesture(); }, endTouchGesture() { secondary.endTouchGesture(); }});
 const originalTracker = new Tracker();
 const display = {_workspacesViews: [primary, host], _scrollAdjustment: shared, _swipeTracker: originalTracker,
+    _updateWorkspacesViews() {},
     width: 1000, height: 600, mapped: true, reactive: true, _workspacesOnlyOnPrimary: false, _primaryIndex: 0,
     _overviewAdjustment: {value: 1}, _gestureActive: false, get_text_direction: () => rtl ? 1 : 0,
     _getMonitorIndexForEvent: () => selected, _updateSwipeTracker() { this._swipeTracker.enabled = this.mapped; },
     _updateTrackerOrientation() { this._swipeTracker.orientation = manager.layout_rows === -1 ? 1 : 0; },
 };
-const displayStart = native.indexOf('export class WorkspacesDisplay');
-for (const signature of ['_endTouchGesture()', '_moveToWorkspace(which)', '_nextWorkspace()', '_prevWorkspace()',
+const displayStart = native.indexOf('class WorkspacesDisplay');
+const legacyKeyboard = !native.includes('    _moveToWorkspace(which) {');
+for (const signature of ['_endTouchGesture()',
     '_onScrollEvent(actor, event)', '_activeWorkspaceChanged(_wm, _from, to, _direction)',
     '_switchWorkspaceBegin(tracker, monitor)', '_switchWorkspaceUpdate(tracker, progress)', '_switchWorkspaceEnd(tracker, duration, endProgress)'])
     display[signature.split('(')[0]] = method(native, signature, displayStart);
+if (legacyKeyboard) {
+    display._onKeyPressEvent = method(native, '_onKeyPressEvent(actor, event)', displayStart);
+    display.prepareToLeaveOverview = function () { stage.disconnectObject(this); };
+    stage.connectObject('key-press-event', display._onKeyPressEvent.bind(display), display);
+    display._nextWorkspace = () => stage.emit('key-press-event', {get_key_symbol: () => Clutter.KEY_Page_Down});
+    display._prevWorkspace = () => stage.emit('key-press-event', {get_key_symbol: () => Clutter.KEY_Page_Up});
+} else {
+    for (const signature of ['_moveToWorkspace(which)', '_nextWorkspace()', '_prevWorkspace()'])
+        display[signature.split('(')[0]] = method(native, signature, displayStart);
+}
 wm.connectObject('switch-workspace', display._activeWorkspaceChanged.bind(display), display);
 // These are bound before extension enable, just as in GNOME. They must remain
 // intact but cannot process the owned logical tracker.
@@ -268,6 +282,13 @@ const secondaryRecord = isolation._session.records[1];
 secondaryRecord.order.workspaces[2].activate();
 display._nextWorkspace(); assert.equal(active, secondaryRecord.order.workspaces[3]);
 display._prevWorkspace(); assert.equal(active, secondaryRecord.order.workspaces[2]);
+if (legacyKeyboard) {
+    stage.emit('key-press-event', {get_key_symbol: () => Clutter.KEY_Home});
+    assert.equal(active, secondaryRecord.order.workspaces[0], 'legacy Home selects logical first');
+    stage.emit('key-press-event', {get_key_symbol: () => Clutter.KEY_End});
+    assert.equal(active, secondaryRecord.order.workspaces.at(-1), 'legacy End selects logical last');
+    secondaryRecord.order.workspaces[2].activate();
+}
 const event = direction => ({type: () => Clutter.EventType.SCROLL, get_scroll_direction: () => direction});
 display._onScrollEvent(overview, event(Clutter.ScrollDirection.DOWN));
 assert.equal(active, secondaryRecord.order.workspaces[3]);
@@ -342,11 +363,12 @@ assert.deepEqual(secondary._workspaces.map(ws => ws.metaWorkspace), logicalOrder
 // semantics; delayed callbacks and wrappers retained by other extensions inert.
 tracker.emit('begin', 1); tracker.emit('update', 0.4); tracker.emit('end', 200, 0);
 const afterStopCompletion = secondary._scrollAdjustment.pending.options.onComplete;
-const retainedMove = display._moveToWorkspace;
+const retainedMove = legacyKeyboard ? null : display._moveToWorkspace;
 const originalMoveWrapper = display._moveToWorkspace;
 const navigation = isolation._session.navigation;
 const navigationSession = isolation._session;
-display._moveToWorkspace = function (...args) { return originalMoveWrapper.apply(this, args); };
+if (!legacyKeyboard)
+    display._moveToWorkspace = function (...args) { return originalMoveWrapper.apply(this, args); };
 enabled = false; isolation.refresh();
 assert.equal(display._swipeTracker, originalTracker); assert.equal(originalTracker.enabled, true);
 assert.equal(navigation.session, null); assert.equal(navigation.isolation, null);
@@ -356,12 +378,18 @@ assert.equal(tracker.destroyed, true); assert.equal(primary._scrollAdjustment, s
 assert.equal(secondary._scrollAdjustment, shared); assert.equal(primary._scrollToActive, nativePrimaryScroll);
 assert.equal(manager.owned(primary), 2); assert.equal(manager.owned(secondary), 2);
 assert.equal(shared.owned(primary), 1); assert.equal(shared.owned(secondary), 1);
-assert.equal(stage.signals.size, 0);
+assert.equal(stage.signals.size, legacyKeyboard ? 1 : 0);
 assert.equal(Main.layoutManager.overviewGroup.signals.size, 0, 'owned tracker actor handlers are removed');
 const afterStopActive = active; afterStopCompletion(); assert.equal(active, afterStopActive);
 assert.deepEqual(secondaryOrder(), workspaces.map((_, i) => i));
 const nativeNeighbor = active.get_neighbor(motion.RIGHT);
-retainedMove.call(display, motion.RIGHT); assert.equal(active, nativeNeighbor);
+if (legacyKeyboard) {
+    assert.equal(stage.owned(display), 1, 'GNOME 50 native stage key handler restored');
+    display._nextWorkspace();
+} else {
+    retainedMove.call(display, motion.RIGHT);
+}
+assert.equal(active, nativeNeighbor);
 // Re-enable and repeat teardown; no accumulating owned handlers.
 enabled = true; isolation.refresh();
 assert.equal(manager.owned(primary), 0); assert.equal(manager.owned(secondary), 0);
@@ -391,7 +419,7 @@ assert.equal(destructionTracker.destroyed, true);
 assert.equal(manager.owned(secondary), 0, 'destroyed views do not regain native manager handlers');
 assert.equal(display._swipeTracker, originalTracker);
 isolation.destroy();
-console.log('PASS: GNOME 51 logical large-view allocation, bidirectional seam swipes/Page/wheel, bounds, cancellation, selection lock, dynamic workspace lifecycle, mode and cleanup');
+console.log('PASS: upstream GNOME logical large-view allocation, bidirectional seam swipes/Page/wheel, bounds, cancellation, selection lock, dynamic workspace lifecycle, mode and cleanup');
 
 // Integrate native render/membership callbacks with independently sized stacks.
 // Four (or more) physical workspaces must still render as one logical slot per
@@ -415,6 +443,7 @@ function projectionThumbnail(metaWorkspace, monitorIndex) {
         setScale(x, y) { this._viewport.scale_x = x; this._viewport.scale_y = y; },
         allocate(box) { this.allocation = box.copy(); this.x = box.x1; this.width = box.get_width(); },
         remove_transition() {}, activate: method(thumbnailNative, 'activate(time)'),
+        handleDragOverInternal: method(thumbnailNative, 'handleDragOverInternal(source, actor, time)'),
     });
 }
 function projectionBox(monitorIndex) {
@@ -430,6 +459,8 @@ function projectionBox(monitorIndex) {
         addThumbnails(start, count) { for (let i = start; i < start + count; i++) this._thumbnails.push(projectionThumbnail(workspaces[i], monitorIndex)); },
         removeThumbnails() {}, acceptDrop: method(thumbnailNative, 'acceptDrop(source, actor, x, y, time)'), handleDragOver() { return this._thumbnails.map(t => t.metaWorkspace); },
         _activateThumbnailAtPoint: method(thumbnailNative, '_activateThumbnailAtPoint(x, y, time)'),
+        _getPlaceholderTarget: method(thumbnailNative, '_getPlaceholderTarget(index, spacing, rtl)'),
+        _withinWorkspace: method(thumbnailNative, '_withinWorkspace(x, index, rtl)'),
         _setThumbnailState(t, state) { t.state = state; },
         get_preferred_width(width) { return this.vfunc_get_preferred_width(width); },
         get_preferred_height(height) { return this.vfunc_get_preferred_height(height); },

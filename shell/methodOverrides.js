@@ -11,6 +11,8 @@ export class MethodOverrides {
 
     add(object, name, createOverride) {
         const original = object[name];
+        if (typeof original !== 'function')
+            throw new Error(`Orchard Workspace: required method ${name} is unavailable`);
         const hook = {object, name,
             descriptor: Object.getOwnPropertyDescriptor(object, name),
             override: createOverride(original)};

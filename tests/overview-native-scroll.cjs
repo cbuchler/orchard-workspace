@@ -56,6 +56,7 @@ const primary = view(), secondary = view();
 const host = Object.assign(new Signals(), {_workspacesView: secondary, startTouchGesture() { secondary.startTouchGesture(); },
     endTouchGesture() { secondary.endTouchGesture(); }});
 const display = {_workspacesViews: [primary, host], _scrollAdjustment: shared,
+    _updateWorkspacesViews() {},
     _endTouchGesture() { primary.endTouchGesture(); host.endTouchGesture(); }};
 overview._overview = {controls: {_workspacesDisplay: display}};
 const isolation = new ctx.OverviewWorkspaceIsolation({conditionallyEnableAutomaticSwitching() {},

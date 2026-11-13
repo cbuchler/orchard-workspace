@@ -6,6 +6,10 @@ const source = fs.readFileSync(path.join(__dirname, '../shell/methodOverrides.js
     .replace('export class MethodOverrides', 'class MethodOverrides');
 const {MethodOverrides} = vm.runInNewContext(`${source}\n({MethodOverrides})`);
 const owner = new MethodOverrides();
+const missing = {};
+assert.throws(() => owner.add(missing, 'required', original => original), /required method required is unavailable/);
+assert(!Object.hasOwn(missing, 'required'), 'missing-method failure must not install a wrapper');
+assert.equal(owner._hooks.length, 0);
 const prototype = {run(value) { return this.value + value; }};
 const object = Object.assign(Object.create(prototype), {value: 2});
 owner.add(object, 'run', original => function (value) { return original.call(this, value) * 3; });

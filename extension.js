@@ -23,6 +23,7 @@ import {WorkspaceSwitcher} from './shell/switcher.js';
 import {LogicalWorkspaceLifecycle} from './shell/lifecycle.js';
 import {WindowActivation} from './shell/activation.js';
 import {NativeWorkspaceShortcuts} from './shell/shortcuts.js';
+import {assertShellCompatibility} from './shell/compatibility.js';
 
 const PREVIOUS = 'switch-active-display-previous';
 const NEXT = 'switch-active-display-next';
@@ -31,6 +32,7 @@ const REMOVE = 'remove-active-display-workspace';
 
 export default class SwitchWorkspacesExtension extends Extension {
     enable() {
+        assertShellCompatibility(this.metadata);
         const settings = this.getSettings();
         const configuration = new ConfigurationService(settings);
         const resolver = new MonitorResolver();
