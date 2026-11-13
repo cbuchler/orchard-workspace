@@ -101,6 +101,14 @@ class ValidationTests(unittest.TestCase):
         self.assertIn('candidate activation state wrong before input',
                       validate('extension-disabled', 0, before, after))
 
+    def test_dynamic_pruning_permits_physical_pool_change_with_logical_order_intact(self):
+        before, after = self.state()
+        after['count'] = 3
+        self.assertEqual(validate('native-right', 0, before, after, workspace_mode='dynamic'), [])
+        after['targetOrder'] = [0, 1]
+        self.assertIn('logical order changed or adopted physical neighbor',
+                      validate('native-right', 0, before, after, workspace_mode='dynamic'))
+
     def test_reject_fixture_display_relocation(self):
         before, after = self.state()
         before['windows'] = copy.deepcopy(after['windows'])
@@ -108,6 +116,23 @@ class ValidationTests(unittest.TestCase):
         after['windows'][0]['monitor'] = 1
         self.assertIn('operation moved a fixture to another display',
                       validate('native-right', 0, before, after))
+
+    def test_persistence_requires_uuid_order_and_selection(self):
+        before, after = self.state()
+        for window in after['windows']:
+            window['workspaceIdentity'] = window['workspace']
+        before.update(targetSlotIds=['a', 'b', 'c'], selectedSlotId='c', otherSlotIds=['d', 'e'],
+                      windows=copy.deepcopy(after['windows']))
+        after.update(candidateActive=True, candidateWasDisabled=True, total=0,
+                     targetSlotIds=['a', 'b', 'c'], selectedSlotId='c', otherSlotIds=['d', 'e'])
+        self.assertEqual(validate('persist-reenable', 0, before, after), [])
+        after['targetSlotIds'] = ['a', 'c']
+        self.assertIn('logical desktop identities/order did not survive re-enable',
+                      validate('persist-reenable', 0, before, after))
+        after['targetSlotIds'] = before['targetSlotIds']
+        after['selectedSlotId'] = 'b'
+        self.assertIn('selected desktop identity did not survive re-enable',
+                      validate('persist-reenable', 0, before, after))
 
     def test_cleanup_kills_descendant_after_leader_exits(self):
         child = 'import os,signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);print(os.getpid(),flush=True);time.sleep(30)'

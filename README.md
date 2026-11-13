@@ -229,6 +229,14 @@ Fullscreen and interrupted-move checks are explicit selections:
 
 Each case records candidate source hashes, fixture preconditions, window/workspace state, animation samples, screenshots and runtime logs. Setup failures fail the case. Runtime JavaScript errors fail the case; shutdown errors are recorded separately. Gesture cases drive the real gesture-settlement controller rather than injecting a hardware gesture. Frame captures permit visual inspection but do not establish physical-monitor behavior, actual touchpad input, display unplug/replug, or acceptance alongside the user's other extensions.
 
+Persistence checks require a candidate with layout persistence:
+
+```sh
+/usr/bin/python3 tests/live/run.py --case persist-reenable --case persist-new-shell --require-major 51 --output /tmp/orchard-persistence-check
+```
+
+Both cases compare saved desktop UUID order and selection. Re-enable also checks that existing windows keep their workspace identities and visibility. The new-Shell case terminates only its private compositor and fixture clients, starts another compositor with the same private settings, then creates new clients. It checks that empty desktops and selection survive a fresh Shell process; it does not simulate app session restoration or the user's logout/login. Add `--workspace-mode dynamic` to check restoration alongside native empty-workspace pruning.
+
 ## Contributing, feature requests, and bugs
 
 Use [GitHub Issues](https://github.com/cbuchler/orchard-workspace/issues) to report bugs, request features, or discuss a contribution. Search existing issues first. If one covers your topic, add your findings there.

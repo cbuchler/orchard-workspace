@@ -5,7 +5,7 @@ import Shell from 'gi://Shell';
 import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
-const XML='<node><interface name="org.gnome.Shell.Extensions.OrchardActivationTest"><method name="Snapshot"><arg type="s" direction="out"/></method><method name="Setup"><arg type="i" direction="in"/></method><method name="Prepare"/><method name="Activate"/><method name="ExitFullscreen"/><method name="Capture"><arg type="s" direction="in"/></method></interface></node>';
+const XML='<node><interface name="org.gnome.Shell.Extensions.OrchardActivationTest"><method name="Snapshot"><arg type="s" direction="out"/></method><method name="EnableCandidate"/><method name="Setup"><arg type="i" direction="in"/></method><method name="Resume"><arg type="i" direction="in"/></method><method name="Prepare"/><method name="Activate"/><method name="ExitFullscreen"/><method name="Capture"><arg type="s" direction="in"/></method></interface></node>';
 export default class Observer extends Extension {
  enable(){
   this.total=0;this.rawSignals=0;this.started=false;this.error=null;this.returned=false;this.samples=[];this.captureErrors=[];this.captureComplete=[];this.sampleSource=0;
@@ -39,7 +39,8 @@ export default class Observer extends Extension {
    return fixture&&w.get_monitor()===fixture.monitor&&w.get_workspace()===fixture.workspace;
   });
   const focusReady=Main.overview.visible||global.display.focus_window===this.windows().find(w=>w.get_title().endsWith(String(this.focusFixture??0)));
-  return JSON.stringify({active:manager.get_active_workspace_index(),count:manager.get_n_workspaces(),
+  return JSON.stringify({observerReady:true,active:manager.get_active_workspace_index(),count:manager.get_n_workspaces(),
+   physicalOrderIdentities:Array.from({length:manager.get_n_workspaces()},(_,i)=>this.identity(manager.get_workspace_by_index(i))),
    activeIdentity:this.identity(manager.get_active_workspace()),
    rightNeighborIdentity:this.identity(manager.get_active_workspace().get_neighbor(Meta.MotionDirection.RIGHT)),
    candidateActive:!!state,fixtureReady:fixtureReady&&focusReady,captureErrors:this.captureErrors,captureComplete:this.captureComplete,samples:this.samples,interrupted:this.interrupted,
@@ -52,6 +53,11 @@ export default class Observer extends Extension {
    removalOrderPreserved:!!this.beforeSlots&&this.removalOrderPreserved(order),
    modal:Main.modalCount,blocks:Main.wm._blockCount??(Main.wm._workspaceTracker._pauseWorkspaceCheck?1:0),switching:!!Main.wm._workspaceAnimation._switchData,
    targetOrder:state?.lifecycle.orderForMonitor(this.monitor)?.workspaces.map(ws=>ws.index()),
+   targetSlotIds:order?.slots.map(slot=>slot.id),
+   selectedSlotId:order?.slots.find(slot=>slot.workspace===manager.get_active_workspace())?.id,
+   otherSlotIds:state?.lifecycle.orderForMonitor(1-this.monitor)?.slots.map(slot=>slot.id),
+   candidateWasDisabled:this.candidateWasDisabled,
+   resumed:this.resumed,
    targetOrderIdentities:state?.lifecycle.orderForMonitor(this.monitor)?.workspaces.map(ws=>this.identity(ws)),
    otherOrder:state?.lifecycle.orderForMonitor(1-this.monitor)?.workspaces.map(ws=>ws.index()),
    otherSlotPreserved:this.otherSlot?state?.lifecycle.orderForMonitor(1-this.monitor)?.slots[0]===this.otherSlot:null,
@@ -65,6 +71,7 @@ export default class Observer extends Extension {
     visible:w.get_compositor_private()?.visible,onActive:w.located_on_workspace(manager.get_active_workspace()),fullscreen:w.is_fullscreen()})),
    extensions:[...Main.extensionManager._extensions].map(([id,e])=>[id,e.state])});
  }
+ EnableCandidate(){global.settings.set_strv('enabled-extensions',['orchard-activation-test@local','orchard-workspace@cbuchler.github.io']);}
  Setup(monitor){
   this.monitor=monitor;this.scenario=GLib.getenv('ORCHARD_SHORTCUT_CASE');this.started=false;
   const manager=global.workspace_manager;
@@ -75,7 +82,7 @@ export default class Observer extends Extension {
   }
   while(manager.get_n_workspaces()<4)manager.append_new_workspace(false,global.display.get_current_time_roundtrip());
   this.identities=new Map(Array.from({length:manager.get_n_workspaces()},(_,i)=>[manager.get_workspace_by_index(i),i]));
-  const first=['fullscreen-middle','remove-middle'].includes(this.scenario)?1:['fullscreen-last','remove-last','rotated','last-boundary'].includes(this.scenario)?3:0;
+  const first=['fullscreen-middle','remove-middle'].includes(this.scenario)?1:['fullscreen-last','remove-last','rotated','last-boundary','persist-reenable','persist-new-shell'].includes(this.scenario)?3:0;
   this.first=first;this.next=first===0?3:0;
   const emptyRemoval=['remove-first','remove-middle','remove-last','remove-explicit','remove-keyboard','remove-final'].includes(this.scenario);
   const neighbor=first===0||first===3?1:0;
@@ -103,7 +110,7 @@ export default class Observer extends Extension {
  Prepare(){
   const state=this.state(),manager=global.workspace_manager;
   const local=this.scenario==='remove-fullscreen-last-origin'||this.scenario==='remove-final'?[this.first]:
-   this.scenario.startsWith('fullscreen-')||this.scenario.startsWith('remove-')?[0,1,3]:this.scenario==='last-boundary'?[0,3]:[this.first,this.next];
+   this.scenario.startsWith('fullscreen-')||this.scenario.startsWith('remove-')||this.scenario.startsWith('persist-')?[0,1,3]:this.scenario==='last-boundary'?[0,3]:[this.first,this.next];
   for(const [index,indices] of [[this.monitor,local],[1-this.monitor,[this.first,2]]]){
    const order=state.lifecycle.orderForMonitor(index);
    order.slots=indices.map(i=>order.slots.find(slot=>slot.workspace===manager.get_workspace_by_index(i))??
@@ -113,6 +120,10 @@ export default class Observer extends Extension {
   this.beforeSlots=[...state.lifecycle.orderForMonitor(this.monitor).slots];
   this.origin=this.beforeSlots.find(slot=>slot.workspace===manager.get_active_workspace());
   state.overview.syncLogicalOrders();
+  if(this.scenario.startsWith('persist-')){
+   if(!state.lifecycle.persistence)throw new Error('Candidate lacks persistence service');
+   state.lifecycle.persistence.flush();
+  }
   if(this.setupBlocked){
    const wm=Main.wm;
    if(wm.unblockWorkspaceUpdates)wm.unblockWorkspaceUpdates();else wm._workspaceTracker.unblockUpdates();
@@ -125,6 +136,21 @@ export default class Observer extends Extension {
   const pointerMonitor=this.scenario.startsWith('move-')||this.scenario.endsWith('-move')||this.scenario==='remove-explicit'?1-this.monitor:this.monitor;
   const m=Main.layoutManager.monitors[pointerMonitor];
   global.stage.context.get_backend().get_default_seat().warp_pointer(m.x+100,m.y+100);
+ }
+ Resume(monitor){
+  // Observe restored logical state without rebuilding it through Setup/Prepare.
+  // New Wayland clients cannot survive a compositor restart. Give fresh
+  // fixtures native monitor placement on the currently selected workspace.
+  this.monitor=monitor;this.scenario=GLib.getenv('ORCHARD_SHORTCUT_CASE');
+  const active=global.workspace_manager.get_active_workspace();
+  this.fixtureMonitors=[monitor,monitor,1-monitor,1-monitor];
+  this.fixtureWorkspaces=[active,active,active,active];this.focusFixture=0;
+  for(const w of this.windows()){
+   const i=Number(w.get_title().at(-1)),mi=this.fixtureMonitors[i],m=Main.layoutManager.monitors[mi];
+   w.move_to_monitor(mi);w.move_resize_frame(false,m.x+60,m.y+60,400,300);
+  }
+  Main.activateWindow(this.windows().find(w=>w.get_title().endsWith('0')),global.display.get_current_time_roundtrip());
+  this.returned=true;this.resumed=true;
  }
  removalOrderPreserved(order){
   const expected=this.beforeSlots.filter(slot=>slot!==this.origin);
@@ -140,7 +166,14 @@ export default class Observer extends Extension {
     return GLib.SOURCE_CONTINUE;
    });
    GLib.timeout_add(GLib.PRIORITY_DEFAULT,80,()=>{this.Capture('during');return GLib.SOURCE_REMOVE;});
-   if(this.scenario.startsWith('remove-fullscreen')){
+   if(this.scenario==='persist-reenable'){
+    global.settings.set_strv('enabled-extensions',['orchard-activation-test@local']);
+    GLib.timeout_add(GLib.PRIORITY_DEFAULT,100,()=>{
+     this.candidateWasDisabled=!this.state();
+     this.EnableCandidate();
+     return GLib.SOURCE_REMOVE;
+    });
+   }else if(this.scenario.startsWith('remove-fullscreen')){
     this.windows().find(w=>w.get_title().endsWith('0')).make_fullscreen();
     GLib.timeout_add(GLib.PRIORITY_DEFAULT,100,()=>{
      const state=this.state(),stack=state.lifecycle.stackForMonitor(this.monitor);

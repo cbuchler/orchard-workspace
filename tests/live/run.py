@@ -27,7 +27,7 @@ SHORTCUTS = ['native-right', 'rotated', 'native-number', 'native-last', 'invalid
 FULLSCREEN = ['fullscreen-first', 'fullscreen-middle', 'fullscreen-last']
 REMOVAL = ['remove-first', 'remove-middle', 'remove-last', 'remove-explicit', 'remove-keyboard',
            'remove-occupied', 'remove-final', 'remove-fullscreen-origin', 'remove-fullscreen-last-origin']
-CASES = SHORTCUTS + FULLSCREEN + REMOVAL + ['rapid-native', 'restack-arrival', 'interrupted-move', 'interrupted-gesture-move',
+CASES = SHORTCUTS + FULLSCREEN + REMOVAL + ['persist-reenable', 'persist-new-shell', 'rapid-native', 'restack-arrival', 'interrupted-move', 'interrupted-gesture-move',
                                   'overview-move', 'animations-disabled-move']
 HOST_ENDPOINTS = ['DISPLAY', 'XAUTHORITY', 'SESSION_MANAGER', 'GNOME_KEYRING_CONTROL',
                   'SSH_AUTH_SOCK', 'AT_SPI_BUS_ADDRESS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE']
@@ -64,7 +64,7 @@ def stop_group(process):
         process.wait()
 
 
-def validate(case, monitor, before, after, intermediate=None):
+def validate(case, monitor, before, after, intermediate=None, workspace_mode='fixed'):
     """Return concrete invariant failures; unexpected setup never counts as a pass."""
     failures = []
 
@@ -91,7 +91,22 @@ def validate(case, monitor, before, after, intermediate=None):
         check(all(w.get('monitor') == previous[i].get('monitor') for i, w in windows.items()),
               'operation moved a fixture to another display')
 
-    if case in REMOVAL:
+    if case.startswith('persist-'):
+        check(after.get('candidateActive'), 'candidate not active after restart')
+        if case == 'persist-reenable':
+            check(after.get('candidateWasDisabled'), 'candidate did not disable and re-enable')
+        else:
+            check(after.get('resumed') and after.get('fixtureReady'), 'fresh Shell observation/fixtures failed')
+            check(after.get('fullscreenOwners') == 0, 'fresh Shell restored temporary fullscreen ownership')
+        check(before.get('targetSlotIds') and all(before['targetSlotIds']) and
+              after.get('targetSlotIds') == before['targetSlotIds'], 'logical desktop identities/order did not survive re-enable')
+        check(after.get('selectedSlotId') == before.get('selectedSlotId'), 'selected desktop identity did not survive re-enable')
+        check(after.get('otherSlotIds') == before.get('otherSlotIds'), 'other display layout changed on re-enable')
+        check(after.get('total') == 0, 're-enable unexpectedly activated a workspace')
+        if case == 'persist-reenable':
+            check(previous and all(w.get('workspaceIdentity') == previous[i].get('workspaceIdentity') and
+                  w['visible'] == previous[i]['visible'] for i, w in windows.items()), 're-enable relocated or hid a fixture window')
+    elif case in REMOVAL:
         rejected = case in ['remove-occupied', 'remove-final']
         if rejected:
             check(after.get('removalResult') is False, 'unsafe removal was not rejected')
@@ -151,12 +166,14 @@ def validate(case, monitor, before, after, intermediate=None):
         check(after.get('activeIdentity', after.get('active')) == target, 'wrong logical destination')
         check(after.get('targetOrderIdentities', after.get('targetOrder')) == order, 'logical order changed or adopted physical neighbor')
         check(after.get('total') == (0 if noop else 2 if case == 'rapid-native' else 1), 'unexpected workspace-change count')
-        check(after.get('count') == before.get('count'), 'shortcut created/removed a physical workspace')
+        if workspace_mode == 'fixed':
+            check(after.get('count') == before.get('count'), 'shortcut created/removed a physical workspace')
         if case.startswith('move') or case.endswith('-move'):
             check(windows['0'].get('workspaceIdentity', windows['0']['workspace']) == target and windows['0']['visible'], 'moved window not visible at destination')
         elif case == 'rapid-native':
             check(windows['0']['visible'] and not windows['1']['visible'], 'rapid reversal shows wrong desktop')
-            check(after.get('actorsReused'), 'rapid reversal replaced animation actors')
+            if before.get('physicalOrderIdentities') == after.get('physicalOrderIdentities'):
+                check(after.get('actorsReused'), 'rapid reversal replaced animation actors')
         elif not noop:
             check(windows['1']['visible'] and not windows['0']['visible'], 'selected display shows wrong desktop windows')
         if case.endswith('-move'):
@@ -165,7 +182,7 @@ def validate(case, monitor, before, after, intermediate=None):
             if case not in ['overview-move', 'animations-disabled-move']:
                 check(any(s.get('movingWindowSticky') for s in after.get('samples', [])),
                       'replacement animation never kept moved window in sticky group')
-    if case not in ['all-displays', 'extension-disabled']:
+    if case not in ['all-displays', 'extension-disabled'] and not case.startswith('persist-'):
         check(after.get('otherSlotPreserved') and after.get('otherSlotActive'), 'other display lost its selected logical slot')
         check(windows['2']['visible'] and windows['2']['onActive'], 'unrelated visible window disappeared')
         if case != 'restack-arrival':
@@ -214,7 +231,9 @@ def worker(args):
                 ('org.gnome.mutter', 'workspaces-only-on-primary', 'false'),
                 ('org.gnome.desktop.wm.preferences', 'num-workspaces', '4'),
                 ('org.gnome.shell', 'disable-user-extensions', 'false'),
-                ('org.gnome.shell', 'enabled-extensions', repr([UUID, OBSERVER])),
+                # Shell unwinds extensions enabled after one being disabled.
+                # Keep the observer first so it survives candidate cycling.
+                ('org.gnome.shell', 'enabled-extensions', repr([OBSERVER, UUID])),
                 ('org.gnome.shell', 'disabled-extensions', '[]')]
     for key, value in {'switch-to-workspace-right': "['<Super><Alt>Right']",
                        'switch-to-workspace-left': "['<Super><Alt>Left']",
@@ -252,17 +271,42 @@ def worker(args):
         raise RuntimeError('Timed out waiting for isolated compositor/fixtures')
 
     children = []
-    try:
-        with (root / 'shell.log').open('w') as log:
+    def stop_children():
+        for child in reversed(children):
+            if child.poll() is None:
+                child.terminate()
+        for child in reversed(children):
+            try:
+                child.wait(timeout=4)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+
+    def launch_shell(filename):
+        if args.case.startswith('persist-'):
+            # Ensure the observer is loaded first, regardless of directory
+            # enumeration order, so Shell never unwinds it with the candidate.
+            subprocess.run(['/usr/bin/gsettings', 'set', 'org.gnome.shell',
+                            'enabled-extensions', repr([OBSERVER])], check=True)
+        with (root / filename).open('w') as log:
             children.append(subprocess.Popen([args.shell, '--headless', '--wayland',
                 '--wayland-display=orchard-test', '--virtual-monitor=1280x800',
                 '--virtual-monitor=1024x768'], stdout=log, stderr=subprocess.STDOUT))
+        if args.case.startswith('persist-'):
+            until(lambda state: state.get('observerReady'))
+            call('EnableCandidate')
         until(lambda state: state.get('candidateActive'))
+
+    def launch_fixtures():
         for number in range(4):
-            with (root / f'fixture-{number}.log').open('w') as log:
+            with (root / f'fixture-{number}.log').open('a') as log:
                 children.append(subprocess.Popen(['/usr/bin/python3', str(HERE / 'fixtures.py'),
                     str(number)], stdout=log, stderr=subprocess.STDOUT))
         until(lambda state: len(state.get('windows', [])) == 4)
+
+    try:
+        launch_shell('shell.log')
+        launch_fixtures()
         time.sleep(1)
         for attempt in range(5):
             call('Setup', GLib.Variant('(i)', (args.monitor,)))
@@ -280,8 +324,21 @@ def worker(args):
             raise RuntimeError('Fixture preconditions changed after preparation')
         call('Capture', GLib.Variant('(s)', ('before',)))
         until(lambda state: 'before' in state.get('captureComplete', []) or state.get('captureErrors'))
-        call('Activate')
-        time.sleep(1.3)
+        if args.case == 'persist-new-shell':
+            first_pid = children[0].pid
+            stop_children()
+            children.clear()
+            launch_shell('restart-shell.log')
+            write_json(root / 'restart.json', {'firstPid': first_pid, 'secondPid': children[0].pid})
+            launch_fixtures()
+            time.sleep(1)
+            call('Resume', GLib.Variant('(i)', (args.monitor,)))
+            until(lambda state: state.get('fixtureReady'))
+        else:
+            call('Activate')
+            time.sleep(1.3)
+        if args.case == 'persist-reenable':
+            until(lambda state: state.get('candidateActive') and state.get('candidateWasDisabled'))
         intermediate = None
         if args.case.startswith(('fullscreen-', 'remove-fullscreen')):
             intermediate = snapshot()
@@ -294,8 +351,9 @@ def worker(args):
         write_json(root / 'after.json', after)
         call('Capture', GLib.Variant('(s)', ('after',)))
         captured = until(lambda state: 'after' in state.get('captureComplete', []) or state.get('captureErrors'))
-        runtime_log = (root / 'shell.log').read_text()
-        failures = validate(args.case, args.monitor, before, after, intermediate)
+        runtime_log = '\n'.join(path.read_text().split('Shutting down GNOME Shell', 1)[0]
+                                for path in [root / 'shell.log', root / 'restart-shell.log'] if path.exists())
+        failures = validate(args.case, args.monitor, before, after, intermediate, args.workspace_mode)
         if captured.get('captureErrors'):
             failures.append('screenshot capture failed: ' + str(captured['captureErrors']))
         if 'JS ERROR:' in runtime_log:
@@ -306,15 +364,7 @@ def worker(args):
         write_json(root / 'result.json', result)
         return result
     finally:
-        for child in reversed(children):
-            if child.poll() is None:
-                child.terminate()
-        for child in reversed(children):
-            try:
-                child.wait(timeout=4)
-            except subprocess.TimeoutExpired:
-                child.kill()
-                child.wait()
+        stop_children()
 
 
 def main():
@@ -392,9 +442,9 @@ def main():
                 result['failures'].append('worker exit ' + str(returncode))
         except subprocess.TimeoutExpired:
             result = {'case': case, 'monitor': monitor, 'pass': False, 'failures': ['worker timed out']}
-        shell_log = (root / 'shell.log').read_text() if (root / 'shell.log').exists() else ''
-        result['teardownJsErrors'] = shell_log.split('Shutting down GNOME Shell', 1)[-1].count('JS ERROR:') \
-            if 'Shutting down GNOME Shell' in shell_log else 0
+        logs = [path.read_text() for path in [root / 'shell.log', root / 'restart-shell.log'] if path.exists()]
+        result['teardownJsErrors'] = sum(log.split('Shutting down GNOME Shell', 1)[1].count('JS ERROR:')
+                                         for log in logs if 'Shutting down GNOME Shell' in log)
         return result
 
     results = []
