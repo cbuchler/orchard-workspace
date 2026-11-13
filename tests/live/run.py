@@ -29,6 +29,8 @@ REMOVAL = ['remove-first', 'remove-middle', 'remove-last', 'remove-explicit', 'r
            'remove-occupied', 'remove-final', 'remove-fullscreen-origin', 'remove-fullscreen-last-origin']
 CASES = SHORTCUTS + FULLSCREEN + REMOVAL + ['rapid-native', 'restack-arrival', 'interrupted-move', 'interrupted-gesture-move',
                                   'overview-move', 'animations-disabled-move']
+HOST_ENDPOINTS = ['DISPLAY', 'XAUTHORITY', 'SESSION_MANAGER', 'GNOME_KEYRING_CONTROL',
+                  'SSH_AUTH_SOCK', 'AT_SPI_BUS_ADDRESS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE']
 
 
 def write_json(path, data):
@@ -185,8 +187,7 @@ def worker(args):
     os.chmod(root / 'runtime', 0o700)
     os.environ.update(isolated_environment(root))
     os.environ.update(ORCHARD_SHORTCUT_CASE=args.case, ORCHARD_TEST_OUTPUT=str(root))
-    for key in ['DISPLAY', 'XAUTHORITY', 'SESSION_MANAGER', 'GNOME_KEYRING_CONTROL',
-                'SSH_AUTH_SOCK', 'AT_SPI_BUS_ADDRESS', 'DBUS_STARTER_ADDRESS', 'DBUS_STARTER_BUS_TYPE']:
+    for key in HOST_ENDPOINTS:
         os.environ.pop(key, None)
     version = subprocess.check_output([args.shell, '--version'], text=True).strip()
     major = re.search(r'\b(\d+)\.', version).group(1)
@@ -369,6 +370,8 @@ def main():
             environment.update(isolated_environment(root))
             environment.update(ORCHARD_LIVE_WORKER_ALLOWED='1',
                                ORCHARD_LIVE_PARENT_BUS=os.environ.get('DBUS_SESSION_BUS_ADDRESS', ''))
+            for key in HOST_ENDPOINTS + ['DBUS_SESSION_BUS_ADDRESS']:
+                environment.pop(key, None)
             with (root / 'driver.log').open('w') as log:
                 with lock:
                     if stopping.is_set():
