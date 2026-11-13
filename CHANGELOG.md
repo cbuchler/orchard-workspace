@@ -13,6 +13,8 @@
 
 ### Fixed
 
+- Insert temporary fullscreen desktops immediately after their stable origin, preserving nested return paths and unrelated desktop order.
+- Animate ordinary Orchard navigation and selected desktop creation consistently with native shortcuts. Preserve requested moving-window ownership during interrupted slides and expire unconsumed ownership.
 - Route native directional, numbered and last-workspace shortcuts through each display's logical desktop order. Window moves use the focused window's display, and boundary actions do not add desktops.
 - Keep native keyboard slides in logical desktop order, preserving retarget continuity for sparse and rotated workspace mappings.
 - Use the destination window's display during Shell window-helper, app-switcher and launcher activation, preserving the other displays even when the pointer is elsewhere.
@@ -22,9 +24,10 @@
 ### Tests
 
 - Add persistence/reconciliation model coverage for renumbering, pruned empty desktops, new-session occupancy and selected UUIDs, absent/ambiguous display identities, fullscreen exclusion, corrupt/unsupported state and owned save-idle cleanup. Live restart/reconnect acceptance remains separate.
+- Add a reusable isolated real-window compositor harness with private settings/bus, source manifests, fixture validation, per-frame animation samples, PNG captures and explicit failure reports.
 - Add native shortcut regression coverage using installed Shell callbacks bound before Orchard loads, including logical numbering, boundaries, moves, modes, deferred activation and projected animation snapshots.
 - Add activation regression coverage for both display directions, the installed Shell window helper, direct window/workspace-focus calls, app activation routes, rejected requests, exceptions, nested calls and disable cleanup.
-- All eleven automated suites pass against installed GNOME Shell 51.0 source. Thirty isolated real-window shortcut checks pass across both display directions, including native and Orchard key events, sparse/rotated orders, boundaries, window moves, desktop gesture settlement, overview navigation, all-displays fallback and extension disable. The unchanged activation-fix revision reproduces the physical-neighbor bug in the same harness. These are headless compositor checks, not physical-desktop visual acceptance.
+- Source-backed automated suites pass against installed GNOME Shell 51.0 source. Thirty isolated real-window shortcut checks pass across both display directions, including native and Orchard key events, sparse/rotated orders, boundaries, window moves, desktop gesture settlement, overview navigation, all-displays fallback and extension disable. The unchanged activation-fix revision reproduces the physical-neighbor bug in the same harness. These are headless compositor checks, not physical-desktop visual acceptance.
 - The activation fix also has isolated two-monitor real-window evidence for six activation routes, cross-display normal transients, and interruption of keyboard animation and gesture settlement.
 
 ## [0.1.1] - 2026-11-08

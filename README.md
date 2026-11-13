@@ -23,7 +23,7 @@ The settings window has one switch, **Switch only the active display**:
 
 With this switch on, each display starts with one workspace unless it already has windows on others. Orchard keeps those occupied workspaces too. Press **Ctrl+Super+N** to add a workspace to the display under the pointer and switch to it.
 
-When a normal application window enters fullscreen, Orchard gives it a temporary workspace on its display. When it leaves fullscreen, Orchard returns it to its original workspace. If you open another fullscreen window from there, Orchard tracks where each window should return. If you move a window yourself, Orchard stops managing its return. If you put other windows in a temporary workspace, Orchard keeps that workspace.
+When a normal application window enters fullscreen, Orchard gives it a temporary workspace immediately after its originating logical desktop on that display. When it leaves fullscreen, Orchard returns it to its original workspace. If you open another fullscreen window from there, Orchard tracks where each window should return. If you move a window yourself, Orchard stops managing its return. If you put other windows in a temporary workspace, Orchard keeps that workspace.
 
 Desktop and overview gestures follow each display's workspace order and stop at the first and last workspace. In the overview, you can also use the mouse wheel, Page Up/Down, thumbnail clicks, and window drops. Other displays keep their windows and thumbnail positions and sizes. The overview opens and closes with GNOME's normal animation.
 
@@ -51,7 +51,7 @@ GNOME may focus a newer transient window instead of the requested app window. Or
 - In GNOME **Settings → Multitasking**, choose **Workspaces on all displays**. Orchard leaves this setting and your choice of fixed or dynamic workspaces to you.
 - GNOME still has one shared set of workspaces. Orchard gives each display its own list drawn from that set and adds workspaces when needed. In dynamic mode, Orchard keeps the workspaces it uses; GNOME manages the rest.
 - Disabling Orchard leaves windows where they are. GNOME resumes its normal rules and may remove empty dynamic workspaces. Orchard saves ordinary desktop identities, order and selection for recognized displays, including empty desktops. It rebuilds missing backing workspaces on re-enable or a new login; temporary fullscreen ownership is not saved.
-- Orchard temporarily changes internal Shell methods and moves normal windows between workspaces to keep other displays in place. Extensions that change the same methods may conflict. Orchard skips workspace animations for fullscreen changes and its own active-display shortcuts. Native workspace shortcuts and all-display switching can still animate.
+- Orchard temporarily changes internal Shell methods and moves normal windows between workspaces to keep other displays in place. Extensions that change the same methods may conflict. Ordinary Orchard previous/next and add-and-select actions use the same desktop slide as native shortcuts. Fullscreen-owned desktop changes remain immediate to avoid layering a workspace slide over the app's fullscreen transition. Shell's animation settings still control the slide.
 - Animated keyboard switches can be interrupted by another switch without resetting the slide. Orchard keeps the current position and velocity, then settles at the new destination. In active-display mode, the animation uses that display's logical desktop order, including sparse or rotated mappings into GNOME's workspace pool. All-displays mode uses the global pool. Longer desktop lists require more temporary window clones.
 - In active-display mode, an animated keyboard switch keeps the other displays stationary. The selected display stays locked until that slide finishes, even if the pointer crosses to another display during rapid key presses.
 - If you use Kiwi, turn off **Move Window to New Workspace** (`org.gnome.shell.extensions.kiwi` → `move-window-to-new-workspace`). Kiwi can move a fullscreen window after Orchard has placed it, shift other workspaces, and break the window's return path. You can leave Kiwi's other features on. Orchard does not change Kiwi's settings.
@@ -205,6 +205,29 @@ The tests cover:
 - Gesture targets and adding workspaces by dragging windows into the overview.
 - Keyboard switch interruption in Mutter's kill-then-switch order, repeated taps, direction reversals, position and velocity continuity, deferred cleanup, and cancellation on disable or display changes.
 - Hidden windows staying hidden on inactive displays throughout repeated keyboard switches, stationary snapshots, and display selection staying fixed until the slide finishes.
+
+## Isolated live validation
+
+The optional live harness runs a separate headless compositor with two virtual displays and real GTK windows. It uses a private D-Bus session and separate settings, runtime and extension directories. It does not install Orchard into the current desktop. Requirements are GNOME Shell with headless support, Python 3 with PyGObject/GTK 4, `dbus-run-session`, and `glib-compile-schemas`.
+
+```sh
+/usr/bin/python3 tests/live/run.py --case native-right --case orchard --require-major 51 --output /tmp/orchard-live-check
+```
+
+Use a fresh output directory for each run; prior evidence is never overwritten. Omit `--case` to run the shortcut matrix on both displays. Add `--extension-source /path/to/worktree` to test another checkout. `--shell` selects a compositor binary and `--require-major` rejects the wrong installed major. Supplying another version's JavaScript to the Node tests does not substitute for running that compositor.
+
+The default uses a fixed workspace pool. Add `--workspace-mode dynamic` to exercise GNOME's dynamic pruning. These checks track workspace object identity separately from physical index renumbering. `--jobs 2` runs two independent private sessions concurrently; the default is sequential.
+
+Fullscreen and interrupted-move checks are explicit selections:
+
+```sh
+/usr/bin/python3 tests/live/run.py --case fullscreen-first --case fullscreen-middle --case fullscreen-last --require-major 51 --output /tmp/orchard-fullscreen-check
+/usr/bin/python3 tests/live/run.py --case interrupted-move --case interrupted-gesture-move --case overview-move --case animations-disabled-move --require-major 51 --output /tmp/orchard-moving-window-check
+/usr/bin/python3 tests/live/run.py --case remove-first --case remove-middle --case remove-last --case remove-explicit --case remove-keyboard --case remove-occupied --case remove-final --case remove-fullscreen-origin --case remove-fullscreen-last-origin --require-major 51 --output /tmp/orchard-removal-check
+/usr/bin/python3 -m unittest discover -s tests/live -p 'test_*.py'
+```
+
+Each case records candidate source hashes, fixture preconditions, window/workspace state, animation samples, screenshots and runtime logs. Setup failures fail the case. Runtime JavaScript errors fail the case; shutdown errors are recorded separately. Gesture cases drive the real gesture-settlement controller rather than injecting a hardware gesture. Frame captures permit visual inspection but do not establish physical-monitor behavior, actual touchpad input, display unplug/replug, or acceptance alongside the user's other extensions.
 
 ## Contributing, feature requests, and bugs
 
