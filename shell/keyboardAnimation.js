@@ -8,10 +8,11 @@ import {MethodOverrides} from './methodOverrides.js';
 // Mutter acknowledges the old switch in WindowManager's kill handler. Keep
 // only its visual actors until the immediately following switch can reuse them.
 export class KeyboardWorkspaceAnimation {
-    constructor(controller, configuration, resolver) {
+    constructor(controller, configuration, resolver, lifecycle = null) {
         this._controller = controller;
         this._configuration = configuration;
         this._resolver = resolver;
+        this._lifecycle = lifecycle;
         this._overrides = new MethodOverrides();
         this._session = null;
         this._idle = 0;
@@ -67,24 +68,31 @@ export class KeyboardWorkspaceAnimation {
         const vertical = manager.layout_rows === -1;
         const rtl = Clutter.get_default_text_direction() === Clutter.TextDirection.RTL;
         let session = this._session;
+        const selected = this._configuration.automaticSwitchingIsEnabled()
+            ? session?.monitorIndex ?? this._resolver.resolve() : null;
+        const logical = selected !== null ? this._lifecycle?.orderForMonitor(selected)?.workspaces : null;
+        // Keyboard targets can be physically sparse or wrap the global pool.
+        // Render them in the same logical sequence used by desktop gestures.
+        const projection = logical?.includes(workspaces[from]) && logical.includes(workspaces[to])
+            ? logical : workspaces;
         // A changed workspace pool/layout invalidates the snapshot coordinates.
         if (session && (session.vertical !== vertical || session.rtl !== rtl ||
+            session.monitorIndex !== selected || session.projection.length !== projection.length ||
+            session.projection.some((workspace, i) => workspace !== projection[i]) ||
             session.workspaces.length !== workspaces.length ||
             session.workspaces.some((workspace, i) => workspace !== workspaces[i]))) {
             controller._finishWorkspaceSwitch(session.data);
             session = null;
         }
         if (!session) {
-            const indices = workspaces.map((_, i) => i);
-            if (rtl && !vertical) indices.reverse();
+            const indices = projection.map(workspace => workspaces.indexOf(workspace));
+            if (projection === workspaces && rtl && !vertical) indices.reverse();
             // Include subsequent destinations now; a two-workspace snapshot
             // cannot retarget A -> B -> C without rebuilding its actors.
             controller._prepareWorkspaceSwitch(indices);
             const data = controller._switchData;
-            const selected = this._configuration.automaticSwitchingIsEnabled()
-                ? this._resolver.resolve() : null;
             const monitorIndex = data.monitors.some(group => group.index === selected) ? selected : null;
-            session = {data, workspaces, vertical, rtl, monitorIndex,
+            session = {data, workspaces, projection: [...projection], vertical, rtl, monitorIndex,
                 records: [], timeline: null, onComplete: null};
             this._session = session;
             for (const group of data.monitors) {
@@ -181,5 +189,6 @@ export class KeyboardWorkspaceAnimation {
         this._controller = null;
         this._configuration = null;
         this._resolver = null;
+        this._lifecycle = null;
     }
 }

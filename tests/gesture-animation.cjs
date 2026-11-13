@@ -375,6 +375,49 @@ for (const primary of [0, 1]) for (const selected of [0, 1]) {
 }
 console.log('PASS: desktop logical subset/single-slot/cyclic ordering, native snap targets, pointer lock and disable cancellation');
 
+// Native keyboard slides must use logical positions too: a physical jump
+// 0 -> 3 is one desktop, and logical 3 -> 0 still moves forward.
+for (const selected of [0, 1]) for (const [vertical, rtl] of [[false, false], [false, true], [true, false]]) {
+    for (const logicalIndices of [[0, 3], [3, 0, 2]]) {
+        const t = setup({selected, vertical, rtl, logicalIndices});
+        t.state.active = logicalIndices[0];
+        t.switchTo(logicalIndices[1]);
+        const groups = [...t.groups()];
+        const group = groups[selected];
+        assert.deepEqual(Array.from(group._workspaceGroups, item => item.workspace.index()), logicalIndices);
+        const start = group.getWorkspaceProgress(t.workspaces[logicalIndices[0]]);
+        const end = group.getWorkspaceProgress(t.workspaces[logicalIndices[1]]);
+        assert.equal(group.progress, start);
+        const pinned = t.painted(groups[1 - selected]);
+        t.advance(80);
+        assert(group.progress > start && group.progress < end, 'next is one forward logical step');
+        assert.deepEqual(t.painted(groups[1 - selected]), pinned);
+        if (logicalIndices.length > 2) {
+            const progress = group.progress;
+            t.switchTo(logicalIndices[2]);
+            assert.equal(t.groups()[selected], group, 'rapid switches retain projected actors');
+            assert.equal(group.progress, progress);
+        }
+        t.advance(300); t.tick(1); t.clean(); t.animation.destroy();
+    }
+}
+{
+    const logicalIndices = [0, 3, 2];
+    const t = setup({logicalIndices}); t.switchTo(3);
+    const old = [...t.groups()];
+    logicalIndices.splice(0, logicalIndices.length, 3, 0, 2);
+    t.switchTo(0);
+    assert(old.every(group => group.destroyed), 'logical reordering invalidates retained coordinates');
+    t.advance(300); t.tick(1); t.clean(); t.animation.destroy();
+}
+{
+    const t = setup({activeOnly: false, logicalIndices: [0, 3]});
+    t.switchTo(1);
+    assert(t.groups().every(group => group._workspaceGroups.length === 4), 'all-display mode retains global animation pool');
+    t.advance(300); t.tick(1); t.clean(); t.animation.destroy();
+}
+console.log('PASS: native keyboard logical projection, sparse/cyclic direction, retarget continuity, logical-order invalidation and all-display fallback');
+
 // Mutter calls kill immediately before switch. Rebuilding the actors loses
 // the displayed position even though the logical active workspace advanced.
 {

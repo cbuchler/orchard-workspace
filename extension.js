@@ -22,6 +22,7 @@ import {OverviewWorkspaceIsolation} from './shell/overview.js';
 import {WorkspaceSwitcher} from './shell/switcher.js';
 import {LogicalWorkspaceLifecycle} from './shell/lifecycle.js';
 import {WindowActivation} from './shell/activation.js';
+import {NativeWorkspaceShortcuts} from './shell/shortcuts.js';
 
 const PREVIOUS = 'switch-active-display-previous';
 const NEXT = 'switch-active-display-next';
@@ -42,7 +43,8 @@ export default class SwitchWorkspacesExtension extends Extension {
         lifecycle.overview = overview;
         lifecycle.animation = animation;
         const activation = new WindowActivation(configuration, resolver);
-        this._state = {settings, configuration, animation, overview, switcher, lifecycle, activation, signals: [], bindings: []};
+        const shortcuts = new NativeWorkspaceShortcuts(switcher);
+        this._state = {settings, configuration, animation, overview, switcher, lifecycle, activation, shortcuts, signals: [], bindings: []};
 
         try {
             activation.enable();
@@ -77,6 +79,7 @@ export default class SwitchWorkspacesExtension extends Extension {
                 for (const window of lifecycle.windows.keys()) lifecycle._queue(window);
             });
             lifecycle.enable();
+            shortcuts.enable();
         } catch (error) {
             this.disable();
             throw error;
@@ -91,6 +94,7 @@ export default class SwitchWorkspacesExtension extends Extension {
             object.disconnect(id);
         for (const name of state.bindings)
             Main.wm.removeKeybinding(name);
+        state.shortcuts.destroy();
         state.activation.destroy();
         state.lifecycle.destroy();
         state.overview.destroy();

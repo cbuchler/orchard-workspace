@@ -25,7 +25,7 @@ export class MonitorWorkspaceAnimation {
         this._lifecycle = lifecycle;
         this._session = null;
         this._overrides = new MethodOverrides();
-        this._keyboard = new KeyboardWorkspaceAnimation(controller, configurationService, monitorResolver);
+        this._keyboard = new KeyboardWorkspaceAnimation(controller, configurationService, monitorResolver, lifecycle);
     }
 
     enable() {

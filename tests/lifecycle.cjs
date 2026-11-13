@@ -259,4 +259,21 @@ for (const dynamic of [false, true]) {
     assert.equal(s.lifecycle.pendingActivation, null);
     s.lifecycle.destroy();
 }
+// Native shortcuts retain Shell's animation decision while using the same
+// destination ownership as Orchard's nonanimated activation path.
+for (const deferred of [false, true]) {
+    const s = setup(false, deferred), win = s.makeWindow(0), other = s.makeWindow(1);
+    s.enable();
+    const slot = s.lifecycle.addWorkspace(0, false);
+    s.choose(1);
+    s.lifecycle.activate(s.lifecycle.stackForMonitor(0), slot, {animate: true});
+    s.flush();
+    assert.equal(s.animationDecisions.at(-1), true, 'native shortcut keeps the native animation gate');
+    assert.equal(s.active(), slot.workspace);
+    assert.equal(other.workspace, s.active(), 'owned display survives deferred notification');
+    assert.notEqual(win.workspace, s.active());
+    assert.equal(s.lifecycle.pendingActivation, null);
+    assert.equal(s.lifecycle.forcedMonitor, null);
+    s.lifecycle.destroy();
+}
 console.log('PASS: independent initialization/expansion, fixed/dynamic retention, fullscreen return and coalesced exit, deferred activation ownership, native animation gating, manual moves, hotplug and cleanup');

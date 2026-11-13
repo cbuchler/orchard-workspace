@@ -128,8 +128,8 @@ export class LogicalWorkspaceLifecycle {
     enable() {
         const lifecycle = this;
         // GNOME 51 no longer consults _blockAnimations in _shouldAnimate().
-        // Gate the actual native decision only during our synchronous owned
-        // activation; preserve native decisions for all other animations.
+        // Gate the native decision only during our nonanimated synchronous
+        // activation; native shortcuts can keep the native animation decision.
         this.overrides.add(Main.wm, '_shouldAnimate', original => function (...args) {
             return lifecycle.forcedMonitor === null && original.apply(this, args);
         });
@@ -291,16 +291,16 @@ export class LogicalWorkspaceLifecycle {
         if (slot) this.activate(stack, slot);
     }
 
-    activate(stack, slot) {
+    activate(stack, slot, {animate = false} = {}) {
         if (stack.index === null || slot.retired || !this.workspaces().includes(slot.workspace)) return;
-        this.animation?.cancel();
+        if (!animate) this.animation?.cancel();
         this.overview?._session?.navigation?.cancel();
         const workspace = slot.workspace;
         if (workspace === global.workspace_manager.get_active_workspace()) return;
         const activation = {stack, workspace};
         this.pendingActivation = activation;
         const previousMonitor = this.forcedMonitor;
-        this.forcedMonitor = stack.index;
+        if (!animate) this.forcedMonitor = stack.index;
         try { workspace.activate(global.get_current_time()); }
         catch (error) {
             if (this.pendingActivation === activation) this.pendingActivation = null;
