@@ -89,6 +89,7 @@ export class WorkspaceSwitcher {
             this.moveWindow(window, shift, sourceIndex);
         this.overview?.shiftWorkspaceOrder(monitor, shift);
         this.overview?.syncActiveWorkspace();
+        this.lifecycle?._changed?.();
     }
 
     switchWorkspace(direction) {

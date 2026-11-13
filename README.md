@@ -50,12 +50,22 @@ GNOME may focus a newer transient window instead of the requested app window. Or
 - Supports exactly the current stable GNOME Shell major and its predecessor: currently 51.x and 50.x. Source checks cover 50.0, 50.6, 51.0 and 51.1; isolated real-window GNOME 50.1 checks pass on extracted official Shell/Mutter packages using host common libraries. This does not establish full GNOME 50 distribution or physical-desktop acceptance. See the [compatibility policy and exact evidence](docs/GNOME_COMPATIBILITY.md).
 - In GNOME **Settings → Multitasking**, choose **Workspaces on all displays**. Orchard leaves this setting and your choice of fixed or dynamic workspaces to you.
 - GNOME still has one shared set of workspaces. Orchard gives each display its own list drawn from that set and adds workspaces when needed. In dynamic mode, Orchard keeps the workspaces it uses; GNOME manages the rest.
-- Disabling Orchard leaves windows where they are. GNOME resumes its normal rules and may remove empty dynamic workspaces. Orchard saves its workspace lists only for the current session. When you enable it again, it rebuilds those lists from occupied workspaces; manually added empty workspaces do not persist.
+- Disabling Orchard leaves windows where they are. GNOME resumes its normal rules and may remove empty dynamic workspaces. Orchard saves ordinary desktop identities, order and selection for recognized displays, including empty desktops. It rebuilds missing backing workspaces on re-enable or a new login; temporary fullscreen ownership is not saved.
 - Orchard temporarily changes internal Shell methods and moves normal windows between workspaces to keep other displays in place. Extensions that change the same methods may conflict. Orchard skips workspace animations for fullscreen changes and its own active-display shortcuts. Native workspace shortcuts and all-display switching can still animate.
 - Animated keyboard switches can be interrupted by another switch without resetting the slide. Orchard keeps the current position and velocity, then settles at the new destination. In active-display mode, the animation uses that display's logical desktop order, including sparse or rotated mappings into GNOME's workspace pool. All-displays mode uses the global pool. Longer desktop lists require more temporary window clones.
 - In active-display mode, an animated keyboard switch keeps the other displays stationary. The selected display stays locked until that slide finishes, even if the pointer crosses to another display during rapid key presses.
 - If you use Kiwi, turn off **Move Window to New Workspace** (`org.gnome.shell.extensions.kiwi` → `move-window-to-new-workspace`). Kiwi can move a fullscreen window after Orchard has placed it, shift other workspaces, and break the window's return path. You can leave Kiwi's other features on. Orchard does not change Kiwi's settings.
 - Disable other copies or variants of Active Monitor Workspaces before enabling Orchard.
+
+### Saved desktop layouts
+
+During the same Shell session, Orchard reconnects surviving workspace objects to their saved desktop UUIDs, even if GNOME renumbers them. If GNOME prunes an empty workspace while Orchard is disabled, Orchard creates a replacement. A native workspace selection made while Orchard is disabled takes priority over the former saved selection; existing windows stay where GNOME placed them.
+
+After logout/login, compositor objects and app-to-desktop associations are new. Orchard restores the selected desktop UUID on the current workspace, assigns the remaining occupied workspaces to saved desktop positions in GNOME's current order, then rebuilds empty desktops. Additional occupied workspaces are retained. This restores the desktop list without moving windows to guess their old associations. A saved empty desktop may receive newly launched or session-restored windows when their current placement takes priority.
+
+Display matching uses connector names plus vendor, product and serial when Mutter provides them. If a connector changes, Orchard restores a hardware identity only when it identifies one saved and one connected display unambiguously. Identical or unknown displays use the exact connector arrangement; unmatched displays start from their current windows, and absent saved displays remain available for a later reconnect. No physical unplug/replug acceptance is implied by the model tests.
+
+State is versioned in the internal `logical-layout` GSettings key. Missing, corrupt, unsupported-version or oversized state falls back to the current occupied layout. The saved format is bounded to 32 display identities and 64 ordinary desktops per display. To discard saved layouts, disable Orchard, reset this key with the schema directory shown below, then re-enable it. All-displays mode leaves the saved per-display layout untouched.
 
 ## Build and install
 
@@ -121,6 +131,7 @@ The other keys are `active-monitor-only`, `switch-active-display-previous`, and 
 | `shell/activation.js` | Carries destination-display ownership through Shell window and app activation calls |
 | `shell/shortcuts.js` | Routes native workspace shortcuts through logical per-display desktop lists |
 | `shell/lifecycle.js` | Manages workspace lists, fullscreen return paths, and display connections |
+| `shell/persistence.js` | Saves versioned display/desktop UUIDs and reconciles current compositor objects without moving windows |
 | `shell/switcher.js` | Switches workspaces and moves windows to keep other displays in place |
 | `shell/animation.js` | Handles desktop gestures |
 | `shell/keyboardAnimation.js` | Retargets interrupted keyboard animations and cleans up their actors |
@@ -138,6 +149,7 @@ Run commands from the repository root. These tests need only Node.js and use its
 node tests/workspace-switching.cjs
 node tests/method-overrides.cjs
 node tests/overview-isolation.cjs
+node tests/persistence.cjs
 ```
 
 For the same four-version source/model matrix used by CI, run `python3 scripts/gnome-source-matrix.py --report /tmp/orchard-gnome-sources.json`. It downloads immutable, hash-checked GNOME source fixtures and needs Python 3 and Node.js. The [compatibility policy](docs/GNOME_COMPATIBILITY.md) explains release monitoring and live validation.
@@ -185,6 +197,7 @@ The tests use simulated actors and windows. They do not check the appearance or 
 The tests cover:
 
 - Workspace creation on each display, fixed and dynamic workspaces, fullscreen return paths, manual window moves, display connection changes, and cleanup.
+- Saved desktop UUID order/selection, same-session index renumbering and empty-workspace pruning, fresh-session occupied/dialog-only reconciliation, absent and ambiguous displays, corrupt state, fullscreen exclusion and save-idle cleanup.
 - Window-helper, app-switcher and launcher activation with the pointer on the other display; activation ownership, recursion prevention and cleanup after rejected or failed requests.
 - Native shortcuts with callbacks bound before Orchard loads, sparse/rotated desktop orders, logical numbers and boundaries, window moves, mode fallback and signal cleanup.
 - Overview navigation across workspace boundaries, gesture cancellation, workspace changes, and view sizing.

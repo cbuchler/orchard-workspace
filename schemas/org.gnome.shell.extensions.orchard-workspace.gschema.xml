@@ -7,6 +7,11 @@
       <summary>Switch only the active display</summary>
       <description>When disabled, GNOME switches all displays together.</description>
     </key>
+    <key name="logical-layout" type="s">
+      <default>''</default>
+      <summary>Saved per-display desktop layout</summary>
+      <description>Versioned internal desktop identities and order. Workspace objects and physical indices are not persisted.</description>
+    </key>
     <key name="add-active-display-workspace" type="as">
       <default><![CDATA[['<Control><Super>n']]]></default>
       <summary>Add workspace on active display</summary>

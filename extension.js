@@ -24,6 +24,7 @@ import {LogicalWorkspaceLifecycle} from './shell/lifecycle.js';
 import {WindowActivation} from './shell/activation.js';
 import {NativeWorkspaceShortcuts} from './shell/shortcuts.js';
 import {assertShellCompatibility, WorkspaceStackingCompatibility} from './shell/compatibility.js';
+import {LogicalLayoutPersistence} from './shell/persistence.js';
 
 const PREVIOUS = 'switch-active-display-previous';
 const NEXT = 'switch-active-display-next';
@@ -39,6 +40,8 @@ export default class SwitchWorkspacesExtension extends Extension {
         configuration.conditionallyEnableAutomaticSwitching();
         const lifecycle = new LogicalWorkspaceLifecycle(configuration, resolver);
         lifecycle.initialize();
+        lifecycle.persistence = new LogicalLayoutPersistence(lifecycle, settings);
+        lifecycle.persistence.restore();
         const animation = new MonitorWorkspaceAnimation(
             Main.wm._workspaceAnimation, configuration, resolver, lifecycle);
         const overview = new OverviewWorkspaceIsolation(configuration, resolver, lifecycle);

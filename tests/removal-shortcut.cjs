@@ -8,6 +8,7 @@ const bindings = new Map(), disconnected = [];
 let nextSignal = 1, removals = 0;
 const signals = {connect() { return nextSignal++; }, disconnect(id) { disconnected.push(id); }};
 class Service { enable() {} destroy() {} }
+class Persistence { restore() {} }
 class Lifecycle extends Service {
     initialize() {}
     removeWorkspace() { removals++; return true; }
@@ -19,6 +20,7 @@ const ctx = vm.createContext({Meta: {KeyBindingFlags: {NONE: 0}},
     Extension: class { getSettings() { return settings; } },
     MonitorResolver: Service, ConfigurationService: Configuration,
     LogicalWorkspaceLifecycle: Lifecycle, MonitorWorkspaceAnimation: Service,
+    LogicalLayoutPersistence: Persistence,
     OverviewWorkspaceIsolation: Service, WorkspaceSwitcher: Service,
     WindowActivation: Service, NativeWorkspaceShortcuts: Service,
     assertShellCompatibility() {}, WorkspaceStackingCompatibility: Service,

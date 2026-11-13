@@ -59,6 +59,7 @@ export class LogicalWorkspaceLifecycle {
         this.pendingActivation = null;
         this.overview = null;
         this.animation = null;
+        this.persistence = null;
     }
 
     workspaces() {
@@ -67,10 +68,12 @@ export class LogicalWorkspaceLifecycle {
     }
 
     _monitors() {
-        return global.backend.get_monitor_manager().get_logical_monitors().map(monitor => ({
-            index: monitor.get_number(),
-            key: monitor.get_monitors().map(output => output.get_connector()).sort().join('|'),
-        }));
+        return global.backend.get_monitor_manager().get_logical_monitors().map(monitor => {
+            const outputs = monitor.get_monitors();
+            const identities = outputs.map(output => [output.get_vendor?.() ?? '', output.get_product?.() ?? '', output.get_serial?.() ?? '']);
+            return {index: monitor.get_number(), key: outputs.map(output => output.get_connector()).sort().join('|'),
+                hardware: identities.some(parts => parts.some(Boolean)) ? JSON.stringify(identities.sort()) : ''};
+        });
     }
 
     _eligible(window) {
@@ -87,19 +90,25 @@ export class LogicalWorkspaceLifecycle {
     }
 
     _syncMonitors() {
+        const restoring = [];
+        const connected = new Set([...this.stacks.values()].filter(stack => stack.index !== null));
         for (const stack of this.stacks.values()) stack.index = null;
         const active = global.workspace_manager.get_active_workspace();
         for (const monitor of this._monitors()) {
             let stack = this.stacks.get(monitor.key);
-            if (!stack) {
-                stack = {key: monitor.key, index: monitor.index, order: new LogicalWorkspaceOrder([active])};
+            if (!stack || (stack.hardware && monitor.hardware && stack.hardware !== monitor.hardware)) {
+                stack = {key: monitor.key, hardware: monitor.hardware, index: monitor.index, order: new LogicalWorkspaceOrder([active])};
                 this.stacks.set(monitor.key, stack);
+                restoring.push(stack);
+            } else if (!connected.has(stack)) {
+                restoring.push(stack);
             }
             stack.index = monitor.index;
             stack.order.reconcile(this.workspaces());
             if (!stack.order.slots.some(slot => slot.workspace === active))
                 stack.order.insert(0, active);
         }
+        this.persistence?.restore(restoring);
     }
 
     stackForMonitor(index) { return [...this.stacks.values()].find(stack => stack.index === index); }
@@ -154,6 +163,7 @@ export class LogicalWorkspaceLifecycle {
             this._changed();
         });
         for (const window of this._allWindows()) this._watch(window);
+        this.persistence?.save();
     }
 
     _protectLogicalSlots() {
@@ -401,9 +411,12 @@ export class LogicalWorkspaceLifecycle {
 
     _changed() {
         this.overview?.syncLogicalOrders();
+        this.persistence?.save();
     }
 
     destroy() {
+        this.persistence?.destroy();
+        this.persistence = null;
         for (const source of this.pending) GLib.source_remove(source);
         this.pending.clear();
         for (const state of this.windows.values()) {
