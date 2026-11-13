@@ -1,7 +1,13 @@
 import copy
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
 import unittest
 
-from run import validate
+from run import stop_group, validate
 
 
 class ValidationTests(unittest.TestCase):
@@ -83,6 +89,49 @@ class ValidationTests(unittest.TestCase):
         before, after = self.state()
         after.update(active=1, activeIdentity=3, targetOrder=[0, 1], targetOrderIdentities=[0, 3])
         self.assertEqual(validate('native-right', 0, before, after), [])
+
+    def test_disabled_candidate_requires_inactive_state(self):
+        before, after = self.state()
+        before['candidateActive'] = False
+        after['active'] = 1
+        for window in after['windows']:
+            window['visible'] = False
+        self.assertEqual(validate('extension-disabled', 0, before, after), [])
+        before['candidateActive'] = True
+        self.assertIn('candidate activation state wrong before input',
+                      validate('extension-disabled', 0, before, after))
+
+    def test_reject_fixture_display_relocation(self):
+        before, after = self.state()
+        before['windows'] = copy.deepcopy(after['windows'])
+        before['windows'][0]['monitor'] = 0
+        after['windows'][0]['monitor'] = 1
+        self.assertIn('operation moved a fixture to another display',
+                      validate('native-right', 0, before, after))
+
+    def test_cleanup_kills_descendant_after_leader_exits(self):
+        child = 'import os,signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);print(os.getpid(),flush=True);time.sleep(30)'
+        leader = 'import subprocess,sys,time;subprocess.Popen([sys.executable,"-c",sys.argv[1]]);time.sleep(30)'
+        process = subprocess.Popen([sys.executable, '-c', leader, child], start_new_session=True,
+                                   stdout=subprocess.PIPE, text=True)
+        try:
+            descendant = int(process.stdout.readline())
+            stop_group(process)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                status = Path(f'/proc/{descendant}/stat')
+                if not status.exists() or status.read_text().split()[2] == 'Z':
+                    break
+                time.sleep(.02)
+            else:
+                self.fail('TERM-ignoring descendant survived its session leader')
+        finally:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+            process.stdout.close()
 
 
 if __name__ == '__main__':

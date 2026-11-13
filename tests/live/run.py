@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 HERE = Path(__file__).resolve().parent
@@ -43,6 +44,24 @@ def isolated_environment(root):
             'XDG_DATA_DIRS': '/usr/local/share:/usr/share', 'LIBGL_ALWAYS_SOFTWARE': '1'}
 
 
+def stop_group(process):
+    """Drain our private group even if its leader exits before its descendants."""
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+    finally:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+
+
 def validate(case, monitor, before, after, intermediate=None):
     """Return concrete invariant failures; unexpected setup never counts as a pass."""
     failures = []
@@ -54,7 +73,8 @@ def validate(case, monitor, before, after, intermediate=None):
     check(before.get('fixtureReady'), 'fixture placement/workspace/focus preconditions failed')
     check(before.get('targetMonitor') == monitor and after.get('targetMonitor') == monitor,
           'requested test display does not match observer')
-    check(before.get('candidateActive'), 'candidate extension not active before input')
+    check(bool(before.get('candidateActive')) == (case != 'extension-disabled'),
+          'candidate activation state wrong before input')
     check(after.get('error') is None, 'observer error: ' + str(after.get('error')))
     check(after.get('returned'), 'test operation did not return')
     check(not after.get('switching'), 'workspace animation retained')
@@ -64,6 +84,10 @@ def validate(case, monitor, before, after, intermediate=None):
     check(set(windows) == {'0', '1', '2', '3'}, 'fixture window missing or unexpected')
     if len(windows) != 4:
         return failures
+    previous = {w['title'][-1]: w for w in before.get('windows', [])}
+    if previous:
+        check(all(w.get('monitor') == previous[i].get('monitor') for i, w in windows.items()),
+              'operation moved a fixture to another display')
 
     if case in REMOVAL:
         rejected = case in ['remove-occupied', 'remove-final']
@@ -130,6 +154,7 @@ def validate(case, monitor, before, after, intermediate=None):
             check(windows['0'].get('workspaceIdentity', windows['0']['workspace']) == target and windows['0']['visible'], 'moved window not visible at destination')
         elif case == 'rapid-native':
             check(windows['0']['visible'] and not windows['1']['visible'], 'rapid reversal shows wrong desktop')
+            check(after.get('actorsReused'), 'rapid reversal replaced animation actors')
         elif not noop:
             check(windows['1']['visible'] and not windows['0']['visible'], 'selected display shows wrong desktop windows')
         if case.endswith('-move'):
@@ -180,6 +205,8 @@ def worker(args):
     manifest = {str(p.relative_to(candidate)): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in candidate.rglob('*') if p.is_file() and p.suffix in ['.js', '.json', '.xml']}
     write_json(root / 'candidate-files.json', manifest)
+    write_json(root / 'harness-files.json', {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+               for p in [HERE / 'run.py', HERE / 'observer.js', HERE / 'fixtures.py']})
     settings = [('org.gnome.desktop.screensaver', 'lock-enabled', 'false'),
                 ('org.gnome.desktop.session', 'idle-delay', '0'),
                 ('org.gnome.mutter', 'dynamic-workspaces', 'true' if args.workspace_mode == 'dynamic' else 'false'),
@@ -321,6 +348,9 @@ def main():
         run = subprocess.run(command, cwd=source, text=True, capture_output=True)
         identity[key] = run.stdout.strip() if run.returncode == 0 else None
     write_json(output / 'source.json', identity)
+    active = set()
+    lock = threading.Lock()
+    stopping = threading.Event()
 
     def run_case(item):
         case, monitor = item
@@ -340,18 +370,18 @@ def main():
             environment.update(ORCHARD_LIVE_WORKER_ALLOWED='1',
                                ORCHARD_LIVE_PARENT_BUS=os.environ.get('DBUS_SESSION_BUS_ADDRESS', ''))
             with (root / 'driver.log').open('w') as log:
-                process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
-                                           start_new_session=True, env=environment)
+                with lock:
+                    if stopping.is_set():
+                        return {'case': case, 'monitor': monitor, 'pass': False, 'failures': ['run interrupted']}
+                    process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT,
+                                               start_new_session=True, env=environment)
+                    active.add(process)
                 try:
                     returncode = process.wait(timeout=90)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGTERM)
-                    try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(process.pid, signal.SIGKILL)
-                        process.wait()
-                    raise
+                finally:
+                    stop_group(process)
+                    with lock:
+                        active.discard(process)
             result = json.loads((root / 'result.json').read_text()) if (root / 'result.json').exists() else {
                 'case': case, 'monitor': monitor, 'pass': False, 'failures': ['worker failed; inspect driver.log']}
             if returncode != 0:
@@ -366,10 +396,17 @@ def main():
 
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        for result in pool.map(run_case, [(case, monitor) for case in cases for monitor in monitors]):
-            results.append(result)
-            write_json(output / 'results.json', results)
-            print(json.dumps(result), flush=True)
+        try:
+            for result in pool.map(run_case, [(case, monitor) for case in cases for monitor in monitors]):
+                results.append(result)
+                write_json(output / 'results.json', results)
+                print(json.dumps(result), flush=True)
+        except BaseException:
+            stopping.set()
+            with lock:
+                for process in active:
+                    stop_group(process)
+            raise
     print('Evidence: ' + str(output.resolve()))
     raise SystemExit(0 if all(result['pass'] for result in results) else 1)
 

@@ -93,7 +93,7 @@ export default class Observer extends Extension {
    w.move_to_monitor(mi);w.change_workspace(this.fixtureWorkspaces[i]);
    w.move_resize_frame(false,m.x+60,m.y+60,400,300);
   }
-  const pointerMonitor=this.scenario.includes('move')||this.scenario==='remove-explicit'?1-monitor:monitor;
+  const pointerMonitor=this.scenario.startsWith('move-')||this.scenario.endsWith('-move')||this.scenario==='remove-explicit'?1-monitor:monitor;
   const m=Main.layoutManager.monitors[pointerMonitor];
   global.stage.context.get_backend().get_default_seat().warp_pointer(m.x+100,m.y+100);
   this.focusFixture=emptyRemoval?2:0;
@@ -122,7 +122,7 @@ export default class Observer extends Extension {
   if(this.scenario==='all-displays')state.settings.set_boolean('active-monitor-only',false);
   if(this.scenario==='extension-disabled')global.settings.set_strv('enabled-extensions',['orchard-activation-test@local']);
   this.total=0;this.rawSignals=0;this.lastWorkspace=manager.get_active_workspace();this.error=null;this.returned=false;
-  const pointerMonitor=this.scenario.includes('move')||this.scenario==='remove-explicit'?1-this.monitor:this.monitor;
+  const pointerMonitor=this.scenario.startsWith('move-')||this.scenario.endsWith('-move')||this.scenario==='remove-explicit'?1-this.monitor:this.monitor;
   const m=Main.layoutManager.monitors[pointerMonitor];
   global.stage.context.get_backend().get_default_seat().warp_pointer(m.x+100,m.y+100);
  }
