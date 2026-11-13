@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Use the destination window's display during Shell window-helper, app-switcher and launcher activation, preserving the other displays even when the pointer is elsewhere.
+- Discard superseded animation ownership only when activation actually changes workspace, and restore normal pointer selection after the activation returns or fails.
+- Follow GNOME's effective transient target during app activation and protect its related window family from compensating moves. Snapshot compensation indices so moving one relative cannot shift another twice.
+
+### Tests
+
+- Add activation regression coverage for both display directions, the installed Shell window helper, direct window/workspace-focus calls, app activation routes, rejected requests, exceptions, nested calls and disable cleanup.
+- All ten automated suites pass against installed GNOME Shell 51.0 source. Isolated two-monitor tests with real GTK windows cover six activation routes in both directions, cross-display normal transients, and activation during keyboard animation and gesture settlement. Each test makes one workspace change, focuses the target, preserves unrelated windows on the other display and releases modal/animation state. This is headless compositor validation, not physical-desktop visual acceptance.
+
 ## [0.1.1] - 2026-11-08
 
 ### Fixed

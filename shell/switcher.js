@@ -38,9 +38,8 @@ export class WorkspaceSwitcher {
                 !window.is_on_all_workspaces());
     }
 
-    moveWindow(window, shift) {
+    moveWindow(window, shift, index = window.get_workspace().index()) {
         const count = global.workspace_manager.get_n_workspaces();
-        const index = window.get_workspace().index();
         const target = ((index + shift) % count + count) % count;
         const move = () => window.change_workspace_by_index(target, false);
         if (this.overview)
@@ -67,16 +66,27 @@ export class WorkspaceSwitcher {
             return;
         }
 
-        const monitor = activationMonitor ?? this.lifecycle?.forcedMonitor ?? this.animation.selectedMonitor ?? this.overview?.selectedMonitor ?? this.resolver.resolve();
+        const windowMonitor = this.resolver.activationMonitor;
+        if (windowMonitor != null) {
+            // A real window activation supersedes an older gesture/keyboard
+            // selection. Cancel only after a switch actually occurs, so a
+            // rejected activation cannot interrupt the user's current motion.
+            this.animation.cancel();
+            this.overview?._session?.navigation?.cancel();
+        }
+        const monitor = windowMonitor ?? activationMonitor ?? this.lifecycle?.forcedMonitor ?? this.animation.selectedMonitor ?? this.overview?.selectedMonitor ?? this.resolver.resolve();
         if (this.lifecycle) {
             const order = this.lifecycle.orderForMonitor(monitor);
             if (order && !order.workspaces.includes(workspace)) order.insert(order.slots.length, workspace);
         }
         const shift = index - previousIndex;
-        for (const window of this.movableWindows()) {
-            if (window.get_monitor() !== monitor)
-                this.moveWindow(window, shift);
-        }
+        // Moving a parent also moves its transients. Snapshot every source
+        // index first, so a later relative isn't shifted a second time.
+        const moves = this.movableWindows()
+            .filter(window => window.get_monitor() !== monitor && !this.resolver.activation?.family.has(window))
+            .map(window => [window, window.get_workspace().index()]);
+        for (const [window, sourceIndex] of moves)
+            this.moveWindow(window, shift, sourceIndex);
         this.overview?.shiftWorkspaceOrder(monitor, shift);
         this.overview?.syncActiveWorkspace();
     }

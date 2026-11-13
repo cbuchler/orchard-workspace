@@ -21,6 +21,7 @@ import {MonitorWorkspaceAnimation} from './shell/animation.js';
 import {OverviewWorkspaceIsolation} from './shell/overview.js';
 import {WorkspaceSwitcher} from './shell/switcher.js';
 import {LogicalWorkspaceLifecycle} from './shell/lifecycle.js';
+import {WindowActivation} from './shell/activation.js';
 
 const PREVIOUS = 'switch-active-display-previous';
 const NEXT = 'switch-active-display-next';
@@ -40,9 +41,11 @@ export default class SwitchWorkspacesExtension extends Extension {
         const switcher = new WorkspaceSwitcher(configuration, resolver, animation, overview, lifecycle);
         lifecycle.overview = overview;
         lifecycle.animation = animation;
-        this._state = {settings, configuration, animation, overview, switcher, lifecycle, signals: [], bindings: []};
+        const activation = new WindowActivation(configuration, resolver);
+        this._state = {settings, configuration, animation, overview, switcher, lifecycle, activation, signals: [], bindings: []};
 
         try {
+            activation.enable();
             animation.enable();
             overview.enable();
             for (const [name, direction] of [[PREVIOUS, -1], [NEXT, 1]]) {
@@ -88,6 +91,7 @@ export default class SwitchWorkspacesExtension extends Extension {
             object.disconnect(id);
         for (const name of state.bindings)
             Main.wm.removeKeybinding(name);
+        state.activation.destroy();
         state.lifecycle.destroy();
         state.overview.destroy();
         state.animation.destroy();

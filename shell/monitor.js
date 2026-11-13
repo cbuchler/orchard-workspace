@@ -18,9 +18,23 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 // Resolve the pointer at the moment of the gesture or shortcut. This doesn't
 // require a motion listener or a background polling timer.
 export class MonitorResolver {
+    constructor() {
+        this.activation = null;
+    }
+
+    get activationMonitor() {
+        return this.activation?.monitor ?? null;
+    }
+
+    hasMonitor(index) {
+        return Main.layoutManager.monitors.some(monitor => monitor.index === index);
+    }
+
     resolve() {
-        const [x, y] = global.get_pointer();
         const monitors = Main.layoutManager.monitors;
+        if (monitors.some(monitor => monitor.index === this.activationMonitor))
+            return this.activationMonitor;
+        const [x, y] = global.get_pointer();
         let closest = 0;
         let closestDistance = Infinity;
         for (let i = 0; i < monitors.length; i++) {

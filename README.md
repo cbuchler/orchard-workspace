@@ -37,6 +37,10 @@ Orchard adds no panel indicator, notifications, or on-screen display. **Ctrl+Sup
 
 The pointer selects the active display. Fullscreen workspaces apply to normal application windows when **Switch only the active display** is on. Maximizing a window does not create a workspace.
 
+Activating an existing window through GNOME's window helper, app switcher or app launcher selects that window's display, even when the pointer is elsewhere. That display ownership lasts only for the activation call; subsequent gestures and shortcuts use the pointer again. A successful activation replaces an older in-progress switch, while a rejected activation leaves it running.
+
+GNOME may focus a newer transient window instead of the requested app window. Orchard follows that effective target. Windows in its parent/transient family are revealed together, including relatives on another display; unrelated windows on that display retain their desktop. GNOME moves these related windows together, so a family spanning displays does not behave as independent windows.
+
 ## Requirements and limitations
 
 - Requires GNOME Shell 51. Automated tests cover the code, but workspace management and overview changes still need testing on a live desktop.
@@ -110,6 +114,7 @@ The other keys are `active-monitor-only`, `switch-active-display-previous`, and 
 | `prefs.js` | Preferences UI, running in a separate process |
 | `schemas/` | Switching-mode and shortcut defaults |
 | `shell/monitor.js` | Selects the display under the pointer and checks the switching mode |
+| `shell/activation.js` | Carries destination-display ownership through Shell window and app activation calls |
 | `shell/lifecycle.js` | Manages workspace lists, fullscreen return paths, and display connections |
 | `shell/switcher.js` | Switches workspaces and moves windows to keep other displays in place |
 | `shell/animation.js` | Handles desktop gestures |
@@ -134,6 +139,7 @@ These tests also need GNOME Shell 51 source files. By default, they use `/usr/bi
 
 ```sh
 node tests/gesture-animation.cjs
+node tests/activation.cjs
 node tests/overview-native-scroll.cjs
 node tests/overview-navigation.cjs
 ```
@@ -148,6 +154,7 @@ To use files you have already extracted, set these variables to their paths:
 | `ORCHARD_WM_SOURCE` | `windowManager.js` |
 | `ORCHARD_THUMBNAIL_SOURCE` | `workspaceThumbnail.js` |
 | `ORCHARD_SWIPE_SOURCE` | `swipeTracker.js` |
+| `ORCHARD_MAIN_SOURCE` | `main.js` (activation tests) |
 
 The lifecycle and thumbnail tests need you to set the source paths. If you have the library above, extract the files to a temporary directory and run:
 
@@ -170,6 +177,7 @@ The tests use simulated actors and windows. They do not check the appearance or 
 The tests cover:
 
 - Workspace creation on each display, fixed and dynamic workspaces, fullscreen return paths, manual window moves, display connection changes, and cleanup.
+- Window-helper, app-switcher and launcher activation with the pointer on the other display; activation ownership, recursion prevention and cleanup after rejected or failed requests.
 - Overview navigation across workspace boundaries, gesture cancellation, workspace changes, and view sizing.
 - Thumbnail positions and sizes as GNOME adds or removes workspaces, including narrow layouts, clicks, window drops, and animation cleanup.
 - Gesture targets and adding workspaces by dragging windows into the overview.
