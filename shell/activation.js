@@ -61,7 +61,12 @@ export class WindowActivation {
             !window?.get_workspace())
             return callback();
 
-        const monitor = window.get_monitor();
+        const navigation = this._resolver.navigation;
+        // A fullscreen owner's desktop can be changing while its focused
+        // dialog is on another monitor. Keep that explicit navigation owner;
+        // other activation targets still use their own monitor.
+        const monitor = navigation?.focusWindow === window && navigation.workspace === window.get_workspace()
+            ? navigation.monitor : window.get_monitor();
         if (!this._resolver.hasMonitor(monitor))
             return callback();
 

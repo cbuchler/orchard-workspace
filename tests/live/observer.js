@@ -94,12 +94,15 @@ export default class Observer extends Extension {
   }
   while(manager.get_n_workspaces()<4)manager.append_new_workspace(false,global.display.get_current_time_roundtrip());
   this.identities=new Map(Array.from({length:manager.get_n_workspaces()},(_,i)=>[manager.get_workspace_by_index(i),i]));
-  const first=['fullscreen-middle','fullscreen-mode-roundtrip','fullscreen-keyboard','fullscreen-pointer-other','fullscreen-background','remove-middle'].includes(this.scenario)?1:this.scenario.startsWith('persist-')||['fullscreen-last','remove-last','rotated','last-boundary'].includes(this.scenario)?3:0;
+  const first=['fullscreen-middle','fullscreen-mode-roundtrip','fullscreen-keyboard','fullscreen-pointer-other','fullscreen-background','fullscreen-dialog-other','remove-middle'].includes(this.scenario)?1:this.scenario.startsWith('persist-')||['fullscreen-last','remove-last','rotated','last-boundary'].includes(this.scenario)?3:0;
   this.first=first;this.next=first===0?3:0;
   const emptyRemoval=['remove-first','remove-middle','remove-last','remove-explicit','remove-keyboard','remove-final'].includes(this.scenario);
   const neighbor=first===0||first===3?1:0;
   this.fixtureMonitors=[monitor,monitor,1-monitor,1-monitor];
   this.fixtureWorkspaces=[emptyRemoval?neighbor:first,emptyRemoval?(first===3?1:3):this.next,first,2].map(i=>manager.get_workspace_by_index(i));
+  if(this.scenario==='fullscreen-dialog-other'){
+   this.fixtureMonitors[1]=1-monitor;this.fixtureWorkspaces[1]=this.fixtureWorkspaces[0];
+  }
   if(this.scenario==='remove-fullscreen-last-origin'){
    this.fixtureMonitors[1]=1-monitor;this.fixtureWorkspaces[1]=manager.get_workspace_by_index(2);
   }
@@ -115,7 +118,7 @@ export default class Observer extends Extension {
   const pointerMonitor=this.scenario.startsWith('move-')||this.scenario.endsWith('-move')||['remove-explicit','fullscreen-pointer-other'].includes(this.scenario)?1-monitor:monitor;
   const m=Main.layoutManager.monitors[pointerMonitor];
   global.stage.context.get_backend().get_default_seat().warp_pointer(m.x+100,m.y+100);
-  this.focusFixture=emptyRemoval||this.scenario==='fullscreen-background'?2:0;
+  this.focusFixture=this.scenario==='fullscreen-dialog-other'?1:emptyRemoval||this.scenario==='fullscreen-background'?2:0;
   Main.activateWindow(this.windows().find(w=>w.get_title().endsWith(String(this.focusFixture))),global.display.get_current_time_roundtrip());
   global.stage.context.get_backend().get_default_seat().warp_pointer(m.x+100,m.y+100);
  }

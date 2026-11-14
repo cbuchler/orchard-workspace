@@ -25,7 +25,7 @@ SHORTCUTS = ['native-right', 'rotated', 'native-number', 'native-last', 'invalid
              'move-boundary', 'orchard', 'gesture', 'overview-native',
              'all-displays', 'extension-disabled']
 FULLSCREEN = ['fullscreen-first', 'fullscreen-middle', 'fullscreen-last', 'fullscreen-mode-roundtrip',
-              'fullscreen-keyboard', 'fullscreen-pointer-other', 'fullscreen-background']
+              'fullscreen-keyboard', 'fullscreen-pointer-other', 'fullscreen-background', 'fullscreen-dialog-other']
 REMOVAL = ['remove-first', 'remove-middle', 'remove-last', 'remove-explicit', 'remove-keyboard',
            'remove-occupied', 'remove-final', 'remove-fullscreen-origin', 'remove-fullscreen-last-origin']
 CASES = SHORTCUTS + FULLSCREEN + REMOVAL + ['persist-reenable', 'persist-offmode', 'persist-new-shell', 'rapid-native', 'restack-arrival', 'interrupted-move', 'interrupted-gesture-move',
@@ -317,6 +317,8 @@ def worker(args):
 
     def launch_fixtures():
         for number in range(4):
+            if args.case == 'fullscreen-dialog-other' and number == 1:
+                continue  # Window 1 is the real transient created by client 0.
             with (root / f'fixture-{number}.log').open('a') as log:
                 children.append(subprocess.Popen(['/usr/bin/python3', str(HERE / 'fixtures.py'),
                     str(number)], stdout=log, stderr=subprocess.STDOUT))

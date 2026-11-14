@@ -1,4 +1,4 @@
-import gi,sys
+import gi,sys,os
 gi.require_version('Gtk','4.0')
 from gi.repository import Gtk, Gdk
 number=int(sys.argv[1])
@@ -13,4 +13,7 @@ def activate(app):
   return True
  keys.connect('key-pressed',key_pressed);w.add_controller(keys)
  w.set_default_size(400,300);w.set_child(Gtk.Label(label=f'Test window {number}'));w.present()
+ if number==0 and os.environ.get('ORCHARD_SHORTCUT_CASE')=='fullscreen-dialog-other':
+  dialog=Gtk.Window(application=app,title='ORCHARD FIXTURE 1',transient_for=w)
+  dialog.set_default_size(280,180);dialog.set_child(Gtk.Label(label='Focused cross-display dialog'));dialog.present()
 app.connect('activate',activate);app.run(None)

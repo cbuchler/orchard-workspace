@@ -349,6 +349,7 @@ export class LogicalWorkspaceLifecycle {
         const resolver = this.resolver;
         const previousNavigation = resolver.navigation;
         resolver.navigation = {monitor: stack.index, workspace};
+        if (focusWindow) resolver.navigation.focusWindow = focusWindow;
         if (!animate) this.forcedMonitor = stack.index;
         try {
             const timestamp = global.get_current_time();

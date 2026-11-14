@@ -8,7 +8,7 @@ class Signals {
     disconnect(id) { assert(this.handlers.delete(id)); }
     emit(name, ...args) { for (const [id, handler] of [...this.handlers]) if (this.handlers.has(id) && handler.name === name) handler.callback(this, ...args); }
 }
-function setup(dynamic = true, deferredActivation = false) {
+function setup(dynamic = true, deferredActivation = false, withWindowActivation = false) {
     let monitors = [{index: 0, key: 'eDP-1'}, {index: 1, key: 'HDMI-1'}], selected = 0, active, enabled = true;
     const windows = [], workspaces = [], sources = new Map(), animationDecisions = [], focusRequests = []; let nextSource = 1;
     const manager = Object.assign(new Signals(), {
@@ -24,7 +24,10 @@ function setup(dynamic = true, deferredActivation = false) {
             activate() { if (active === ws) return; active = ws; animationDecisions.push(Main.wm._shouldAnimate());
                 if (deferredActivation) { const id = nextSource++; sources.set(id, () => { manager.emit('active-workspace-changed'); return false; }); }
                 else manager.emit('active-workspace-changed'); },
-            activate_with_focus(window, timestamp) { this.activate(timestamp); display.focus_window = window; focusRequests.push(window); }};
+            activate_with_focus(window, timestamp) {
+                const run = () => { this.activate(timestamp); display.focus_window = window; focusRequests.push(window); };
+                return withWindowActivation ? windowActivation._run(window, run) : run();
+            }};
         Object.defineProperty(ws, 'active', {get: () => ws === active}); return ws;
     }
     for (let i = 0; i < 4; i++) workspaces.push(makeWorkspace()); active = workspaces[0];
@@ -47,9 +50,9 @@ function setup(dynamic = true, deferredActivation = false) {
         LaterType: {BEFORE_REDRAW: 0}, prefs_get_dynamic_workspaces: () => dynamic};
     const ctx = vm.createContext({Main, global, GLib, Meta, MIN_NUM_WORKSPACES: 2,
         Shell: {WindowTracker: {get_default: () => ({get_startup_sequences: () => []})}}});
-    for (const file of ['shell/methodOverrides.js', 'shell/lifecycle.js', 'shell/switcher.js', 'shell/overview.js'])
+    for (const file of ['shell/methodOverrides.js', 'shell/lifecycle.js', 'shell/switcher.js', 'shell/overview.js', 'shell/activation.js'])
         vm.runInContext(fs.readFileSync(file, 'utf8').replace(/^import .*;\s*$/gm, '').replace(/^export class /gm, 'class '), ctx);
-    vm.runInContext('this.Lifecycle = LogicalWorkspaceLifecycle; this.Switcher = WorkspaceSwitcher; this.Isolation = OverviewWorkspaceIsolation;', ctx);
+    vm.runInContext('this.Lifecycle = LogicalWorkspaceLifecycle; this.Switcher = WorkspaceSwitcher; this.Isolation = OverviewWorkspaceIsolation; this.Activation = WindowActivation;', ctx);
     const native = fs.readFileSync(process.env.ORCHARD_WM_SOURCE, 'utf8');
     const shouldStart = native.indexOf('    _shouldAnimate() {'), shouldEnd = native.indexOf('\n    }\n', shouldStart);
     Main.wm._shouldAnimate = vm.runInContext(`({${native.slice(shouldStart, shouldEnd + 6)}})._shouldAnimate`, ctx);
@@ -59,14 +62,17 @@ function setup(dynamic = true, deferredActivation = false) {
         _queueCheckWorkspaces() { if (!this._checkWorkspacesId) this._checkWorkspacesId = global.compositor.get_laters().add(0, this._checkWorkspaces.bind(this)); }};
     Object.defineProperty(tracker, '_workspaces', {get: () => workspaces}); Main.wm._workspaceTracker = tracker;
     const config = {automaticSwitchingIsEnabled: () => enabled, conditionallyEnableAutomaticSwitching() {}};
-    const resolver = {resolve: () => selected};
+    const resolver = {resolve: () => selected, hasMonitor: index => monitors.some(m => m.index === index),
+        get activationMonitor() { return this.activation?.monitor ?? null; }};
+    const windowActivation = new ctx.Activation(config, resolver);
+    windowActivation._enabled = withWindowActivation;
     const lifecycle = new ctx.Lifecycle(config, resolver);
     lifecycle.initialize();
     // Use the real overview owner while the overview has never been opened.
     // Its constructor must already bind logical orders for desktop compensation.
     const overview = new ctx.Isolation(config, resolver, lifecycle);
     lifecycle.overview = overview;
-    const switcher = new ctx.Switcher(config, resolver, {selectedMonitor: null}, overview, lifecycle);
+    const switcher = new ctx.Switcher(config, resolver, {selectedMonitor: null, cancel() {}}, overview, lifecycle);
     manager.connect('active-workspace-changed', () => switcher.onGlobalWorkspaceChanged());
     function makeWindow(monitor, workspace = active) {
         const window = Object.assign(new Signals(), {monitor, workspace, fullscreen: false, destroyed: false,
@@ -85,7 +91,7 @@ function setup(dynamic = true, deferredActivation = false) {
     }
     function flush() { for (let i = 0; sources.size && i < 30; i++) for (const [id, callback] of [...sources]) { if (!sources.has(id)) continue; sources.delete(id); if (callback()) sources.set(id, callback); } assert.equal(sources.size, 0); }
     function toggle(window, fullscreen) { window.fullscreen = fullscreen; window.emit('notify::fullscreen'); flush(); }
-    return {lifecycle, workspaces, windows, manager, display, layout, tracker, makeWindow, flush, toggle, Main, animationDecisions, focusRequests,
+    return {lifecycle, workspaces, windows, manager, display, layout, tracker, makeWindow, flush, toggle, Main, animationDecisions, focusRequests, resolver, windowActivation,
         choose(index) { selected = index; }, active: () => active, setMonitors(value) { monitors = value; layout.emit('monitors-changed'); },
         enable() { lifecycle.initialize(); lifecycle.enable(); flush(); }, sources,
         setEnabled(value) { enabled = value; }};
@@ -116,6 +122,42 @@ for (const monitor of [0, 1]) {
     s.toggle(owner, true); s.toggle(owner, false);
     assert.equal(s.display.focus_window, other);
     assert.equal(s.focusRequests.length, 0);
+    s.lifecycle.destroy();
+}
+
+// Integrate the real activation wrapper: a dialog on the other monitor must
+// retain focus without replacing the fullscreen owner's navigation monitor.
+for (const monitor of [0, 1]) {
+    const s = setup(false, false, true), owner = s.makeWindow(monitor), dialog = s.makeWindow(1 - monitor);
+    const other = s.makeWindow(1 - monitor);
+    dialog.get_transient_for = () => owner;
+    owner.foreach_transient = callback => callback(dialog);
+    dialog.foreach_transient = () => {};
+    other.foreach_transient = () => {};
+    const move = owner.change_workspace.bind(owner);
+    owner.change_workspace = workspace => { move(workspace); dialog.change_workspace(workspace); };
+    s.lifecycle.enable(); s.flush(); s.display.focus_window = dialog;
+    const origin = s.lifecycle.orderForMonitor(monitor).slots[0];
+    s.toggle(owner, true);
+    const fullscreen = s.lifecycle.windows.get(owner).fullscreen;
+    assert(fullscreen, 'cross-monitor focused dialog must not detach fullscreen ownership');
+    assert.equal(fullscreen.slot.workspace, owner.workspace);
+    assert.equal(s.display.focus_window, dialog);
+    assert.equal(other.workspace, s.active());
+    s.toggle(owner, false);
+    assert.equal(owner.workspace, origin.workspace);
+    assert.equal(s.display.focus_window, dialog);
+    assert.equal(s.resolver.navigation, undefined);
+    assert.equal(s.resolver.activation, undefined);
+    s.resolver.navigation = {monitor, workspace: dialog.workspace, focusWindow: dialog};
+    s.windowActivation._run(other, () => {
+        assert.equal(s.resolver.activationMonitor, other.monitor, 'unrelated activation keeps its own monitor');
+    });
+    s.resolver.navigation.workspace = s.workspaces.find(workspace => workspace !== dialog.workspace);
+    s.windowActivation._run(dialog, () => {
+        assert.equal(s.resolver.activationMonitor, dialog.monitor, 'stale workspace intent cannot override the dialog monitor');
+    });
+    s.resolver.navigation = null;
     s.lifecycle.destroy();
 }
 
