@@ -10,7 +10,7 @@ class Signals {
 }
 function setup(dynamic = true, deferredActivation = false) {
     let monitors = [{index: 0, key: 'eDP-1'}, {index: 1, key: 'HDMI-1'}], selected = 0, active, enabled = true;
-    const windows = [], workspaces = [], sources = new Map(), animationDecisions = []; let nextSource = 1;
+    const windows = [], workspaces = [], sources = new Map(), animationDecisions = [], focusRequests = []; let nextSource = 1;
     const manager = Object.assign(new Signals(), {
         get_n_workspaces: () => workspaces.length, get n_workspaces() { return workspaces.length; },
         get_active_workspace: () => active, get_active_workspace_index: () => workspaces.indexOf(active),
@@ -23,7 +23,8 @@ function setup(dynamic = true, deferredActivation = false) {
         const ws = {index: () => { assert(workspaces.includes(ws)); return workspaces.indexOf(ws); },
             activate() { if (active === ws) return; active = ws; animationDecisions.push(Main.wm._shouldAnimate());
                 if (deferredActivation) { const id = nextSource++; sources.set(id, () => { manager.emit('active-workspace-changed'); return false; }); }
-                else manager.emit('active-workspace-changed'); }};
+                else manager.emit('active-workspace-changed'); },
+            activate_with_focus(window, timestamp) { this.activate(timestamp); display.focus_window = window; focusRequests.push(window); }};
         Object.defineProperty(ws, 'active', {get: () => ws === active}); return ws;
     }
     for (let i = 0; i < 4; i++) workspaces.push(makeWorkspace()); active = workspaces[0];
@@ -73,17 +74,73 @@ function setup(dynamic = true, deferredActivation = false) {
             get_window_type: () => 1, get_transient_for: () => null, is_on_all_workspaces: () => false,
             is_override_redirect: () => false,
             is_fullscreen() { return this.fullscreen; },
-            change_workspace(ws) { assert(!this.destroyed); this.workspace = ws; this.emit('workspace-changed'); },
+            change_workspace(ws) { assert(!this.destroyed);
+                if (this.dropFocusOnMove && this.workspace !== ws && display.focus_window === this)
+                    display.focus_window = windows.find(w => w.monitor !== this.monitor && w.workspace === active) ?? null;
+                this.workspace = ws; this.emit('workspace-changed'); },
             change_workspace_by_index(index) { this.change_workspace(workspaces[index]); },
+            activate() { display.focus_window = this; focusRequests.push(this); },
         });
         windows.push(window); return window;
     }
     function flush() { for (let i = 0; sources.size && i < 30; i++) for (const [id, callback] of [...sources]) { if (!sources.has(id)) continue; sources.delete(id); if (callback()) sources.set(id, callback); } assert.equal(sources.size, 0); }
     function toggle(window, fullscreen) { window.fullscreen = fullscreen; window.emit('notify::fullscreen'); flush(); }
-    return {lifecycle, workspaces, windows, manager, display, layout, tracker, makeWindow, flush, toggle, Main, animationDecisions,
+    return {lifecycle, workspaces, windows, manager, display, layout, tracker, makeWindow, flush, toggle, Main, animationDecisions, focusRequests,
         choose(index) { selected = index; }, active: () => active, setMonitors(value) { monitors = value; layout.emit('monitors-changed'); },
         enable() { lifecycle.initialize(); lifecycle.enable(); flush(); }, sources,
         setEnabled(value) { enabled = value; }};
+}
+
+// Moving an active fullscreen owner off its workspace must not hand keyboard
+// input to the unrelated window which Mutter would otherwise focus.
+for (const monitor of [0, 1]) {
+    const s = setup(false), owner = s.makeWindow(monitor), other = s.makeWindow(1 - monitor);
+    s.lifecycle.enable(); s.flush(); s.choose(1 - monitor);
+    s.display.focus_window = owner; owner.dropFocusOnMove = true;
+    const origin = owner.workspace;
+    s.toggle(owner, true);
+    assert.equal(s.display.focus_window, owner, 'fullscreen entry retains owner keyboard focus');
+    assert.equal(other.workspace, s.active(), 'other display remains visible');
+    s.toggle(owner, false);
+    assert.equal(owner.workspace, origin);
+    assert.equal(s.display.focus_window, owner, 'fullscreen exit retains owner keyboard focus');
+    assert.deepEqual(s.focusRequests, [owner, owner]);
+    s.lifecycle.destroy();
+}
+
+// Background fullscreen changes must not explicitly steal focus from another
+// display; only focus which belonged to the fullscreen family is preserved.
+{
+    const s = setup(false), owner = s.makeWindow(0), other = s.makeWindow(1);
+    s.lifecycle.enable(); s.flush(); s.display.focus_window = other;
+    s.toggle(owner, true); s.toggle(owner, false);
+    assert.equal(s.display.focus_window, other);
+    assert.equal(s.focusRequests.length, 0);
+    s.lifecycle.destroy();
+}
+
+// Preserve a focused dialog in the owner's family, including the already-
+// active workspace path, without leaving pending workspace navigation behind.
+{
+    const s = setup(false), owner = s.makeWindow(0), dialog = s.makeWindow(0), other = s.makeWindow(1);
+    dialog.get_transient_for = () => owner;
+    const move = owner.change_workspace.bind(owner);
+    owner.change_workspace = workspace => {
+        move(workspace); dialog.change_workspace(workspace);
+        if (s.display.focus_window === dialog) s.display.focus_window = other;
+    };
+    s.lifecycle.enable(); s.flush(); s.display.focus_window = dialog;
+    s.toggle(owner, true); assert.equal(s.display.focus_window, dialog);
+    s.toggle(owner, false); assert.equal(s.display.focus_window, dialog);
+    assert.deepEqual(s.focusRequests, [dialog, dialog]);
+    s.lifecycle.pendingActivation = null;
+    s.display.focus_window = other;
+    const stack = s.lifecycle.stackForMonitor(0);
+    const activeSlot = stack.order.slots.find(slot => slot.workspace === s.active());
+    s.lifecycle.activate(stack, activeSlot, {focusWindow: dialog});
+    assert.equal(s.display.focus_window, dialog);
+    assert.equal(s.lifecycle.pendingActivation, null);
+    s.lifecycle.destroy();
 }
 for (const dynamic of [false, true]) {
     const s = setup(dynamic); const left = s.makeWindow(0), right = s.makeWindow(1);

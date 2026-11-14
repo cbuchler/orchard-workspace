@@ -11,7 +11,7 @@ function shell(store, epoch) {
     const workspace = () => { const ws = {index: () => workspaces.indexOf(ws), activate() { active = ws; }}; workspaces.push(ws); return ws; };
     for (let i = 0; i < 4; i++) workspace();
     let active = workspaces[0], enabled = true;
-    const global = {get_current_time: () => 1, get_window_actors: () => windows.map(window => ({get_meta_window: () => window})),
+    const global = {display: {focus_window: null}, get_current_time: () => 1, get_window_actors: () => windows.map(window => ({get_meta_window: () => window})),
         workspace_manager: {get_active_workspace: () => active, get_n_workspaces: () => workspaces.length,
             get_workspace_by_index: i => workspaces[i], append_new_workspace: workspace},
         backend: {get_monitor_manager: () => ({get_logical_monitors: () => monitors.map(m => ({

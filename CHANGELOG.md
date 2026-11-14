@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- Preserve keyboard focus on the fullscreen window or its focused dialog when entering and leaving its temporary desktop, so a second F11 reaches the same application. Background fullscreen changes do not explicitly take focus from another window.
 - Insert temporary fullscreen desktops immediately after their stable origin, preserving nested return paths and unrelated desktop order.
 - Animate ordinary Orchard navigation and selected desktop creation consistently with native shortcuts. Preserve requested moving-window ownership during interrupted slides and expire unconsumed ownership.
 - Route native directional, numbered and last-workspace shortcuts through each display's logical desktop order. Window moves use the focused window's display, and boundary actions do not add desktops.

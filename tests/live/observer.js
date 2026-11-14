@@ -84,6 +84,8 @@ export default class Observer extends Extension {
  EnableCandidate(){this.started=true;global.settings.set_strv('enabled-extensions',['orchard-activation-test@local','orchard-workspace@cbuchler.github.io']);}
  Setup(monitor){
   this.monitor=monitor;this.scenario=GLib.getenv('ORCHARD_SHORTCUT_CASE');this.started=false;
+  // Register the virtual device before the first application key event.
+  this.keyboard??=global.stage.context.get_backend().get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
   const manager=global.workspace_manager;
   if(!this.setupBlocked){
    const wm=Main.wm;
@@ -92,7 +94,7 @@ export default class Observer extends Extension {
   }
   while(manager.get_n_workspaces()<4)manager.append_new_workspace(false,global.display.get_current_time_roundtrip());
   this.identities=new Map(Array.from({length:manager.get_n_workspaces()},(_,i)=>[manager.get_workspace_by_index(i),i]));
-  const first=['fullscreen-middle','fullscreen-mode-roundtrip','remove-middle'].includes(this.scenario)?1:this.scenario.startsWith('persist-')||['fullscreen-last','remove-last','rotated','last-boundary'].includes(this.scenario)?3:0;
+  const first=['fullscreen-middle','fullscreen-mode-roundtrip','fullscreen-keyboard','fullscreen-pointer-other','fullscreen-background','remove-middle'].includes(this.scenario)?1:this.scenario.startsWith('persist-')||['fullscreen-last','remove-last','rotated','last-boundary'].includes(this.scenario)?3:0;
   this.first=first;this.next=first===0?3:0;
   const emptyRemoval=['remove-first','remove-middle','remove-last','remove-explicit','remove-keyboard','remove-final'].includes(this.scenario);
   const neighbor=first===0||first===3?1:0;
@@ -110,10 +112,10 @@ export default class Observer extends Extension {
    w.move_to_monitor(mi);w.change_workspace(this.fixtureWorkspaces[i]);
    w.move_resize_frame(false,m.x+60,m.y+60,400,300);
   }
-  const pointerMonitor=this.scenario.startsWith('move-')||this.scenario.endsWith('-move')||this.scenario==='remove-explicit'?1-monitor:monitor;
+  const pointerMonitor=this.scenario.startsWith('move-')||this.scenario.endsWith('-move')||['remove-explicit','fullscreen-pointer-other'].includes(this.scenario)?1-monitor:monitor;
   const m=Main.layoutManager.monitors[pointerMonitor];
   global.stage.context.get_backend().get_default_seat().warp_pointer(m.x+100,m.y+100);
-  this.focusFixture=emptyRemoval?2:0;
+  this.focusFixture=emptyRemoval||this.scenario==='fullscreen-background'?2:0;
   Main.activateWindow(this.windows().find(w=>w.get_title().endsWith(String(this.focusFixture))),global.display.get_current_time_roundtrip());
   global.stage.context.get_backend().get_default_seat().warp_pointer(m.x+100,m.y+100);
  }
@@ -143,7 +145,7 @@ export default class Observer extends Extension {
   if(this.scenario==='all-displays')state.settings.set_boolean('active-monitor-only',false);
   if(this.scenario==='extension-disabled')global.settings.set_strv('enabled-extensions',['orchard-activation-test@local']);
   this.total=0;this.rawSignals=0;this.lastWorkspace=manager.get_active_workspace();this.error=null;this.returned=false;
-  const pointerMonitor=this.scenario.startsWith('move-')||this.scenario.endsWith('-move')||this.scenario==='remove-explicit'?1-this.monitor:this.monitor;
+  const pointerMonitor=this.scenario.startsWith('move-')||this.scenario.endsWith('-move')||['remove-explicit','fullscreen-pointer-other'].includes(this.scenario)?1-this.monitor:this.monitor;
   const m=Main.layoutManager.monitors[pointerMonitor];
   global.stage.context.get_backend().get_default_seat().warp_pointer(m.x+100,m.y+100);
  }
@@ -206,7 +208,8 @@ export default class Observer extends Extension {
     if(this.scenario==='remove-keyboard')this.sendKey(111,[125,29]);
     else this.removalResult=this.state().lifecycle.removeWorkspace(this.monitor);
    }else if(this.scenario.startsWith('fullscreen-')){
-    this.windows().find(w=>w.get_title().endsWith('0')).make_fullscreen();
+    if(this.scenario==='fullscreen-keyboard')this.sendKey(87,[]);
+    else this.windows().find(w=>w.get_title().endsWith('0')).make_fullscreen();
     if(this.scenario==='fullscreen-mode-roundtrip'){
      GLib.timeout_add(GLib.PRIORITY_DEFAULT,150,()=>{
       const settings=this.state().settings;
@@ -286,7 +289,10 @@ export default class Observer extends Extension {
    groups:data?.monitors.map(item=>({index:item.index,progress:item.progress,
     workspaces:item._workspaceGroups.map(ws=>ws.workspace.index())}))??[]};
  }
- ExitFullscreen(){this.windows().find(w=>w.get_title().endsWith('0')).unmake_fullscreen();}
+ ExitFullscreen(){
+  if(this.scenario==='fullscreen-keyboard')this.sendKey(87,[]);
+  else this.windows().find(w=>w.get_title().endsWith('0')).unmake_fullscreen();
+ }
  Capture(label){this.capture(label).catch(error=>this.captureErrors.push(String(error)));}
  async capture(label){
   if(!/^[a-z-]+$/.test(label))throw new Error('Invalid capture label');

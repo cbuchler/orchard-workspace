@@ -12,9 +12,11 @@ from run import stop_group, validate
 
 class ValidationTests(unittest.TestCase):
     def state(self):
-        before = {'fixtureReady': True, 'candidateActive': True, 'targetMonitor': 0, 'count': 4}
+        before = {'fixtureReady': True, 'candidateActive': True, 'targetMonitor': 0, 'count': 4,
+                  'focus': 'ORCHARD FIXTURE 0'}
         after = {'targetMonitor': 0, 'returned': True, 'error': None, 'switching': False,
                  'blocks': 0, 'modal': 0, 'active': 3, 'total': 1, 'count': 4,
+                 'focus': 'ORCHARD FIXTURE 0',
                  'targetOrder': [0, 3], 'otherSlotPreserved': True, 'otherSlotActive': True,
                  'windows': [{'title': 'ORCHARD FIXTURE ' + str(i), 'workspace': 3 if i in [1, 2] else 0,
                               'visible': i in [1, 2], 'onActive': i in [1, 2]}
@@ -142,6 +144,23 @@ class ValidationTests(unittest.TestCase):
         before['automaticSaveReady'] = False
         self.assertIn('automatic layout save did not settle before restart',
                       validate('persist-reenable', 0, before, after))
+
+    def test_fullscreen_rejects_focus_loss_despite_correct_window_placement(self):
+        before, after = self.state()
+        phase = copy.deepcopy(after)
+        phase['windows'][0]['fullscreen'] = True
+        phase['fullscreen'] = {'temporaryPosition': 2, 'originPosition': 1, 'sameOrigin': True,
+                               'unrelatedOrderPreserved': True}
+        after.update(orderRestored=True, originActive=True)
+        after['windows'][0].update(fullscreen=False, visible=True)
+        self.assertEqual(validate('fullscreen-middle', 0, before, after, phase), [])
+        phase['focus'] = 'ORCHARD FIXTURE 2'
+        self.assertIn('fullscreen entry changed keyboard focus',
+                      validate('fullscreen-middle', 0, before, after, phase))
+        phase['focus'] = before['focus']
+        after['focus'] = 'ORCHARD FIXTURE 2'
+        self.assertIn('fullscreen exit changed keyboard focus',
+                      validate('fullscreen-middle', 0, before, after, phase))
 
     def test_cleanup_kills_descendant_after_leader_exits(self):
         child = 'import os,signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);print(os.getpid(),flush=True);time.sleep(30)'

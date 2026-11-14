@@ -24,7 +24,8 @@ SHORTCUTS = ['native-right', 'rotated', 'native-number', 'native-last', 'invalid
              'first-boundary', 'last-boundary', 'move-right', 'move-number',
              'move-boundary', 'orchard', 'gesture', 'overview-native',
              'all-displays', 'extension-disabled']
-FULLSCREEN = ['fullscreen-first', 'fullscreen-middle', 'fullscreen-last', 'fullscreen-mode-roundtrip']
+FULLSCREEN = ['fullscreen-first', 'fullscreen-middle', 'fullscreen-last', 'fullscreen-mode-roundtrip',
+              'fullscreen-keyboard', 'fullscreen-pointer-other', 'fullscreen-background']
 REMOVAL = ['remove-first', 'remove-middle', 'remove-last', 'remove-explicit', 'remove-keyboard',
            'remove-occupied', 'remove-final', 'remove-fullscreen-origin', 'remove-fullscreen-last-origin']
 CASES = SHORTCUTS + FULLSCREEN + REMOVAL + ['persist-reenable', 'persist-offmode', 'persist-new-shell', 'rapid-native', 'restack-arrival', 'interrupted-move', 'interrupted-gesture-move',
@@ -140,7 +141,7 @@ def validate(case, monitor, before, after, intermediate=None, workspace_mode='fi
     elif case.startswith('fullscreen-'):
         phase = intermediate or {}
         fs = phase.get('fullscreen') or {}
-        origin = 1 if case == 'fullscreen-mode-roundtrip' else FULLSCREEN.index(case)
+        origin = {'fullscreen-first': 0, 'fullscreen-middle': 1, 'fullscreen-last': 2}.get(case, 1)
         check(fs.get('temporaryPosition') == origin + 1, 'fullscreen desktop is not adjacent to origin')
         check(fs.get('originPosition') == origin and fs.get('sameOrigin'), 'fullscreen origin identity changed')
         check(fs.get('unrelatedOrderPreserved'), 'fullscreen reordered unrelated desktops')
@@ -149,10 +150,12 @@ def validate(case, monitor, before, after, intermediate=None, workspace_mode='fi
         check(phase.get('otherSlotPreserved') and phase.get('otherSlotActive'), 'fullscreen changed other display selection')
         check(phase.get('windows') and next(w for w in phase['windows'] if w['title'].endswith('0')).get('fullscreen'),
               'real window did not enter fullscreen')
+        check(phase.get('focus') == before.get('focus'), 'fullscreen entry changed keyboard focus')
         check(after.get('orderRestored'), 'fullscreen exit did not restore original slot order')
         check(after.get('originActive'), 'fullscreen exit did not select origin')
         check(not windows['0'].get('fullscreen'), 'real window did not leave fullscreen')
         check(windows['0']['visible'], 'returned fullscreen window is hidden')
+        check(after.get('focus') == before.get('focus'), 'fullscreen exit changed keyboard focus')
     elif case in ['all-displays', 'extension-disabled']:
         target = before.get('rightNeighborIdentity', 1)
         check(after.get('activeIdentity', after.get('active')) == target and after.get('total') == 1,

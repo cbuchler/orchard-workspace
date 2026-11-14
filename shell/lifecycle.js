@@ -332,13 +332,17 @@ export class LogicalWorkspaceLifecycle {
         if (slot) this.activate(stack, slot, {animate: true});
     }
 
-    activate(stack, slot, {animate = false} = {}) {
+    activate(stack, slot, {animate = false, focusWindow = null} = {}) {
         if (stack.index === null || slot.retired || !this.workspaces().includes(slot.workspace)) return;
         const animatedMonitor = this.animation?.selectedMonitor;
         if (!animate || (animatedMonitor != null && animatedMonitor !== stack.index)) this.animation?.cancel();
         this.overview?._session?.navigation?.cancel();
         const workspace = slot.workspace;
-        if (workspace === global.workspace_manager.get_active_workspace()) return;
+        if (workspace === global.workspace_manager.get_active_workspace()) {
+            if (focusWindow?.get_workspace() === workspace)
+                focusWindow.activate(global.get_current_time());
+            return;
+        }
         const activation = {stack, workspace};
         this.pendingActivation = activation;
         const previousMonitor = this.forcedMonitor;
@@ -346,7 +350,13 @@ export class LogicalWorkspaceLifecycle {
         const previousNavigation = resolver.navigation;
         resolver.navigation = {monitor: stack.index, workspace};
         if (!animate) this.forcedMonitor = stack.index;
-        try { workspace.activate(global.get_current_time()); }
+        try {
+            const timestamp = global.get_current_time();
+            if (focusWindow?.get_workspace() === workspace)
+                workspace.activate_with_focus(focusWindow, timestamp);
+            else
+                workspace.activate(timestamp);
+        }
         catch (error) {
             if (this.pendingActivation === activation) this.pendingActivation = null;
             throw error;
@@ -364,15 +374,26 @@ export class LogicalWorkspaceLifecycle {
         return activation?.workspace === workspace ? activation.stack.index : null;
     }
 
+    _focusedFamilyMember(window) {
+        const focused = global.display.focus_window;
+        for (let parent = focused; parent; parent = parent.get_transient_for()) {
+            if (parent === window) return focused;
+        }
+        return null;
+    }
+
     _enterFullscreen(state, stack) {
         const origin = this._slotForWindow(state.window);
         if (!origin) return;
+        // Moving the focused window off the active workspace lets Mutter focus
+        // an unrelated window. Preserve its focus through the workspace change.
+        const focusWindow = this._focusedFamilyMember(state.window);
         const workspace = this._freeBacking(stack);
         const position = stack.order.slots.indexOf(origin) + 1;
         const slot = stack.order.insert(position, workspace, state.window, origin);
         state.fullscreen = {stack, slot, origin};
         state.window.change_workspace(slot.workspace);
-        this.activate(stack, slot);
+        this.activate(stack, slot, {focusWindow});
     }
 
     _returnSlot(stack, origin, excluded = null) {
@@ -387,6 +408,7 @@ export class LogicalWorkspaceLifecycle {
 
     _leaveFullscreen(state, moveWindow, activateReturn = true) {
         const {stack, slot, origin} = state.fullscreen;
+        const focusWindow = moveWindow ? this._focusedFamilyMember(state.window) : null;
         state.fullscreen = null;
         const target = this._returnSlot(stack, origin, slot);
         const destination = target ?? slot;
@@ -405,7 +427,8 @@ export class LogicalWorkspaceLifecycle {
             slot.owner = null;
             if (!target) slot.origin = null;
         }
-        if (wasActive && target && activateReturn && stack.index !== null) this.activate(stack, target);
+        if (wasActive && target && activateReturn && stack.index !== null)
+            this.activate(stack, target, {focusWindow});
         this._changed();
     }
 

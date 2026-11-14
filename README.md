@@ -27,6 +27,8 @@ Press **Ctrl+Super+Delete** to remove that display's active empty desktop. Orcha
 
 When a normal application window enters fullscreen, Orchard gives it a temporary workspace immediately after its originating logical desktop on that display. When it leaves fullscreen, Orchard returns it to its original workspace. If you open another fullscreen window from there, Orchard tracks where each window should return. If you move a window yourself, Orchard stops managing its return. If you put other windows in a temporary workspace, Orchard keeps that workspace.
 
+The focused fullscreen window, or its focused dialog, keeps keyboard focus through these desktop changes. You can use the application's fullscreen shortcut again without clicking the window first.
+
 Desktop and overview gestures follow each display's workspace order and stop at the first and last workspace. In the overview, you can also use the mouse wheel, Page Up/Down, thumbnail clicks, and window drops. Other displays keep their windows and thumbnail positions and sizes. The overview opens and closes with GNOME's normal animation.
 
 Orchard adds no panel indicator, notifications, or on-screen display. **Ctrl+Super+Up/Down** switch workspaces on the selected display when the switch is on, or on all displays when it is off. You can change the shortcuts with GSettings.
