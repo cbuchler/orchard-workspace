@@ -63,6 +63,13 @@ acceptance. Shutdown `dateMenu._sync` diagnostics remain recorded separately;
 each final profile has 14 such diagnostics after shutdown, not during the test
 operations. Candidate and harness hashes match all 40 recorded manifests.
 
+With the corrected F11 fixture, the unchanged `f49af58` build fails the input
+round trip: entry changes focus and the second F11 does not exit the owner.
+The repaired build additionally passes F11 on both displays with Maximize
+Window Into New Workspace enabled after its startup delay. This confirms the
+focus defect does not require that extension, while preserving the distinction
+from the earlier unexplained ordinary-desktop growth on the physical desktop.
+
 Local records are under:
 
 ```text
