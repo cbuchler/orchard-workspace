@@ -1,5 +1,9 @@
 # Isolated live validation — 2026-11-13
 
+The subsequent physical test found keyboard focus loss during fullscreen. The
+original checks below did not assert focus. See the [focus regression and
+repair evidence](FULLSCREEN_FOCUS.md) for the expanded checks and later results.
+
 The integrated runtime candidate is `097d603`. All implementation tracks received
 Astra medium review; reported blocking defects were repaired and re-reviewed.
 The final harness was reviewed at `d132438`; after the documentation rebase it
