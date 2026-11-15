@@ -2,6 +2,7 @@
 """Fail when stable upstream GNOME releases need a compatibility refresh."""
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -45,7 +46,10 @@ def main():
         tags = []
         for page in range(1, 11):
             url = f'https://api.github.com/repos/{lock["repository"]}/tags?per_page=100&page={page}'
-            request = urllib.request.Request(url, headers={'User-Agent': 'orchard-workspace-compatibility'})
+            headers = {'User-Agent': 'orchard-workspace-compatibility'}
+            if token := os.environ.get('GITHUB_TOKEN'):
+                headers['Authorization'] = f'Bearer {token}'
+            request = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(request, timeout=30) as response:
                 batch = json.load(response)
             tags.extend(batch)

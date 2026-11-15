@@ -32,7 +32,7 @@ Validation completed on 2026-11-15:
 - ESLint passes after a clean lockfile installation. An intentional undefined
   variable/unused variable input fails, confirming the gate detects both errors.
 - All 18 source/model suites pass on each pinned Shell version: 50.0, 50.6,
-  51.0 and 51.1 (72 passes). The 19 Python tests, syntax/schema checks and
+  51.0 and 51.1 (72 passes). The 20 Python tests, syntax/schema checks and
   stable-release freshness check pass.
 - All 48 isolated real-window scenarios pass: GNOME Shell/Mutter 50.1 and
   51.0, fixed/dynamic workspaces, both virtual displays, and six scenarios per
@@ -53,6 +53,11 @@ The first GNOME 51 fixed runner exited with status 143 after eight aggregated
 results; the remaining cases completed in a separate batch. Those attempts are
 retained rather than counted as passes. Shutdown-only native `dateMenu._sync`
 diagnostics are retained separately (87 across the accepted scenarios).
+
+The first remote CI run passed lint and all four source/model jobs, but its
+release monitor hit GitHub's anonymous API rate limit. The monitor now sends
+the workflow's existing token; a simulated rate-limit regression checks that
+authentication is supplied without printing the token.
 
 These checks do not establish physical hotplug behavior or all third-party
 extension combinations. The installed desktop extension is updated separately

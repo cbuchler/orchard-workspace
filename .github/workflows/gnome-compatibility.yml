@@ -62,3 +62,5 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - run: python3 scripts/check-gnome-releases.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
