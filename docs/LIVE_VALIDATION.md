@@ -104,7 +104,7 @@ The local evidence index is:
 ~/.local/state/orchard-workspace/gnome-50-runtime-20261113/
 ```
 
-Run the [harness commands in README](../README.md#isolated-live-validation) with
+Run the [harness commands in the development guide](DEVELOPMENT.md#isolated-live-validation) with
 a fresh output directory. The support policy, pinned-source audit and version
 adapter boundaries are in [GNOME_COMPATIBILITY.md](GNOME_COMPATIBILITY.md).
 

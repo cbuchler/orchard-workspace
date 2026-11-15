@@ -2,10 +2,12 @@
 
 ## Unreleased
 
+## [0.2.0] - 2026-11-15
+
 ### Compatibility
 
 - Declare GNOME Shell 50 and 51 support under the current/previous stable-major policy. Add a GNOME 50 Overview keyboard adapter and the upstream restacking repair needed by GNOME 50.0–50.3 when a window arrives during a slide. Detect required incompatible internals before activation, and restore compatibility hooks on disable.
-- Run 17 source/model suites against pinned GNOME 50.0, 50.6, 51.0 and 51.1 sources in CI, with exact hashes and scheduled stable-release monitoring. Isolated GNOME Shell/Mutter 50.1 checks pass 30 shortcut cases and ten focused animation/Overview/fullscreen cases on extracted official packages using host common libraries. Physical-desktop and complete GNOME 50 distribution acceptance remain separate; see [exact evidence and limits](docs/GNOME_COMPATIBILITY.md).
+- Run 18 source/model suites against pinned GNOME 50.0, 50.6, 51.0 and 51.1 sources in CI, with exact hashes and scheduled stable-release monitoring. Isolated GNOME Shell/Mutter 50.1 checks pass 30 shortcut cases and ten focused animation/Overview/fullscreen cases on extracted official packages using host common libraries. Physical-desktop and complete GNOME 50 distribution acceptance remain separate; see [exact evidence and limits](docs/GNOME_COMPATIBILITY.md).
 
 ### Added
 
@@ -23,6 +25,10 @@
 - Use the destination window's display during Shell window-helper, app-switcher and launcher activation, preserving the other displays even when the pointer is elsewhere.
 - Discard superseded animation ownership only when activation actually changes workspace, and restore normal pointer selection after the activation returns or fails.
 - Follow GNOME's effective transient target during app activation and protect its related window family from compensating moves. Snapshot compensation indices so moving one relative cannot shift another twice.
+
+### Documentation
+
+- Put setup and everyday controls first in the README. Move installation, workspace behavior and development instructions into linked guides.
 
 ### Tests
 
@@ -58,5 +64,6 @@
 - Support desktop gestures, keyboard shortcuts, and per-display overview navigation through scrolling, thumbnails, and window drops.
 - Document installation, configuration, limitations, tests, attribution, and AI-assisted generation.
 
+[0.2.0]: https://github.com/cbuchler/orchard-workspace/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/cbuchler/orchard-workspace/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/cbuchler/orchard-workspace/releases/tag/v0.1.0
