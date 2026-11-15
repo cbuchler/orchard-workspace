@@ -1,0 +1,14 @@
+{
+  "name": "orchard-workspace",
+  "private": true,
+  "scripts": {
+    "lint": "eslint --max-warnings 0 extension.js prefs.js shell/"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.15.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

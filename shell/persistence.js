@@ -2,17 +2,11 @@
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 
-// These bindings live only in this Shell process. Disk state contains UUIDs,
-// never GObjects or physical workspace indices. A new Shell gets a new epoch.
+// An immutable epoch scopes serialized window sequence numbers to this Shell.
+// Disk state contains UUIDs and window numbers, never GObjects or pool indices.
 const layoutSession = GLib.uuid_string_random();
-const workspaceBindings = new WeakMap();
 const MAX_DISPLAYS = 32;
 const MAX_SLOTS = 64;
-
-function bindingFor(workspace) {
-    if (!workspaceBindings.has(workspace)) workspaceBindings.set(workspace, GLib.uuid_string_random());
-    return workspaceBindings.get(workspace);
-}
 
 function identifier(value) {
     return typeof value === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(value);
@@ -35,6 +29,9 @@ export function parseLayout(text) {
             displays.add(identity);
             for (const slot of display.slots) {
                 if (!identifier(slot?.id) || ids.has(slot.id) || !identifier(slot.binding)) return null;
+                if (slot.windows !== undefined && (!Array.isArray(slot.windows) || slot.windows.length > 64 ||
+                    slot.windows.some(id => !Number.isInteger(id) || id < 0 || id > 0xffffffff) ||
+                    new Set(slot.windows).size !== slot.windows.length)) return null;
                 ids.add(slot.id);
             }
             if (!display.slots.some(slot => slot.id === display.selected)) return null;
@@ -53,6 +50,7 @@ export class LogicalLayoutPersistence {
         this.source = 0;
         this.restoring = false;
         this.restoredStacks = new WeakSet();
+        this.workspaceBindings = new WeakMap();
     }
 
     restore(stacks = [...this.lifecycle.stacks.values()]) {
@@ -103,15 +101,21 @@ export class LogicalLayoutPersistence {
         const lifecycle = this.lifecycle;
         const active = global.workspace_manager.get_active_workspace();
         const present = lifecycle.workspaces();
-        const occupied = new Set(global.get_window_actors().map(actor => actor.get_meta_window())
+        const windows = global.get_window_actors().map(actor => actor.get_meta_window())
             .filter(window => window?.get_workspace() && window.get_monitor() === stack.index &&
                 !window.is_on_all_workspaces() && !window.is_override_redirect() &&
-                ![Meta.WindowType.DESKTOP, Meta.WindowType.DOCK].includes(window.get_window_type()))
-            .map(window => window.get_workspace()));
+                ![Meta.WindowType.DESKTOP, Meta.WindowType.DOCK].includes(window.get_window_type()));
+        const occupied = new Set(windows.map(window => window.get_workspace()));
         const used = new Set(), assignments = new Map();
         if (this.state.session === layoutSession) {
             for (const entry of saved.slots) {
-                const workspace = present.find(item => workspaceBindings.get(item) === entry.binding);
+                // Instance bindings cover reconnects while enabled. Across disable,
+                // surviving windows identify occupied backings without retaining
+                // Shell objects. Split/moved families use passive reconciliation.
+                const anchors = windows.filter(window => entry.windows?.includes(window.get_stable_sequence()));
+                const candidates = new Set(anchors.map(window => window.get_workspace()));
+                const workspace = present.find(item => this.workspaceBindings.get(item) === entry.binding) ??
+                    (candidates.size === 1 ? [...candidates][0] : null);
                 if (workspace && !used.has(workspace)) { assignments.set(entry.id, workspace); used.add(workspace); }
             }
         }
@@ -184,7 +188,16 @@ export class LogicalLayoutPersistence {
                 ordinary.find(slot => slot.id === stack.selectedId)?.id ?? ordinary[0].id;
             if (stack.index !== null) stack.selectedId = selectedId;
             const record = {key: stack.key, hardware: stack.hardware ?? '', selected: stack.selectedId ?? selectedId,
-                slots: ordinary.map(slot => ({id: slot.id, binding: bindingFor(slot.workspace)}))};
+                slots: ordinary.map(slot => {
+                    if (!this.workspaceBindings.has(slot.workspace))
+                        this.workspaceBindings.set(slot.workspace, GLib.uuid_string_random());
+                    const windows = global.get_window_actors().map(actor => actor.get_meta_window())
+                        .filter(window => window?.get_workspace() === slot.workspace && window.get_monitor() === stack.index &&
+                            !window.is_on_all_workspaces() && !window.is_override_redirect() &&
+                            ![Meta.WindowType.DESKTOP, Meta.WindowType.DOCK].includes(window.get_window_type()))
+                        .map(window => window.get_stable_sequence()).slice(0, 64);
+                    return {id: slot.id, binding: this.workspaceBindings.get(slot.workspace), windows};
+                })};
             // Preserve absent displays, replacing a hardware fallback's former
             // connector record rather than duplicating the same desktop IDs.
             const previous = stack.savedLayout;
@@ -198,11 +211,17 @@ export class LogicalLayoutPersistence {
         if (value !== this.settings.get_string('logical-layout')) this.settings.set_string('logical-layout', value);
     }
 
-    destroy() {
-        this.flush();
+    destroy({save = true} = {}) {
         if (this.source) GLib.source_remove(this.source);
         this.source = 0;
-        this.lifecycle = null;
-        this.settings = null;
+        try {
+            if (save) this.flush();
+        } finally {
+            this.workspaceBindings = null;
+            this.restoredStacks = null;
+            this.state = null;
+            this.lifecycle = null;
+            this.settings = null;
+        }
     }
 }

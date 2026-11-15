@@ -7,6 +7,7 @@ const vm = require('node:vm');
 function shell(store, epoch) {
     let serial = 0, nextSource = 0;
     const sources = new Map(), workspaces = [], windows = [];
+    let windowSerial = 0;
     let monitors = [{index: 0, key: 'eDP-1', hardware: 'panel'}, {index: 1, key: 'HDMI-1', hardware: 'external'}];
     const workspace = () => { const ws = {index: () => workspaces.indexOf(ws), activate() { active = ws; }}; workspaces.push(ws); return ws; };
     for (let i = 0; i < 4; i++) workspace();
@@ -40,7 +41,8 @@ function shell(store, epoch) {
         return lifecycle;
     }
     function window(monitor, ws, type = 1) {
-        const w = {get_monitor: () => monitor, get_workspace: () => ws, get_window_type: () => type,
+        const sequence = ++windowSerial;
+        const w = {get_stable_sequence: () => sequence, get_monitor: () => monitor, get_workspace: () => ws, get_window_type: () => type,
             get_transient_for: () => null, is_on_all_workspaces: () => false, is_override_redirect: () => false,
             change_workspace(target) { assert(w.allowMoves, 'restoration must not move windows'); ws = target; }};
         windows.push(w); return w;
@@ -53,16 +55,23 @@ function shell(store, epoch) {
     };
 }
 // Exact disable/re-enable preserves UUID order, empty desktops and selection,
-// including physical index renumbering. Surviving runtime bindings are UUIDs.
+// including physical index renumbering. Occupied bindings use saved window numbers.
 {
     const store = {}, s = shell(store, 'same');
     s.window(0, s.workspaces[0]); s.window(1, s.workspaces[0]);
     const first = s.start(), order = first.orderForMonitor(0);
     order.insert(1, s.workspaces[3]); order.insert(2, s.workspaces[1]);
+    s.window(0, s.workspaces[1]); s.window(0, s.workspaces[3]);
     s.select(s.workspaces[3]); s.persistence.flush();
     const ids = order.slots.map(slot => slot.id), selected = ids[1];
     const bindings = [...order.workspaces];
+    const oldPersistence = s.persistence;
     first.destroy();
+    assert.equal(oldPersistence.workspaceBindings, null, 'disable releases all runtime binding storage');
+    assert.equal(oldPersistence.restoredStacks, null);
+    assert.equal(oldPersistence.state, null);
+    assert.equal(oldPersistence.lifecycle, null);
+    assert.equal(oldPersistence.settings, null);
     s.workspaces.reverse();
     const second = s.start();
     assert.deepEqual(Array.from(second.orderForMonitor(0).slots, slot => slot.id), Array.from(ids));
@@ -132,6 +141,7 @@ function shell(store, epoch) {
 {
     const store = {}, old = shell(store, 'old'); const first = old.start();
     const order = first.orderForMonitor(0); order.insert(1, old.workspaces[1]); order.insert(2, old.workspaces[3]);
+    old.window(0, old.workspaces[1]); // Sequence 1 is deliberately reused by a fresh Shell.
     old.select(old.workspaces[3]); old.persistence.flush();
     const ids = Array.from(order.slots, slot => slot.id), selected = ids[2]; first.destroy();
     const fresh = shell(store, 'new'); fresh.window(0, fresh.workspaces[0]); fresh.window(0, fresh.workspaces[2], 2);
@@ -196,6 +206,47 @@ function shell(store, epoch) {
     const state = JSON.parse(store.text); state.displays[1].slots[0].id = state.displays[0].slots[0].id;
     assert.equal(s.parse(JSON.stringify(state)), null); s.lifecycle.destroy();
 }
+// A group split while disabled cannot bind its former UUID to an arbitrary
+// member. Retain both current occupied desktops without moving either window.
+{
+    const store = {}, s = shell(store, 'split');
+    const a = s.window(0, s.workspaces[0]), b = s.window(0, s.workspaces[0]);
+    const first = s.start(); first.orderForMonitor(0).insert(1, s.workspaces[1]);
+    s.persistence.flush(); const ids = Array.from(first.orderForMonitor(0).slots, slot => slot.id);
+    first.destroy();
+    a.allowMoves = b.allowMoves = true;
+    a.change_workspace(s.workspaces[2]); b.change_workspace(s.workspaces[3]);
+    a.allowMoves = b.allowMoves = false;
+    const second = s.start(), order = second.orderForMonitor(0);
+    assert.deepEqual(Array.from(order.slots.slice(0, 2), slot => slot.id), ids);
+    assert(order.workspaces.includes(s.workspaces[2]) && order.workspaces.includes(s.workspaces[3]));
+    assert.equal(a.get_workspace(), s.workspaces[2]); assert.equal(b.get_workspace(), s.workspaces[3]);
+    assert.equal(new Set(order.workspaces).size, order.slots.length);
+    second.destroy();
+}
+// Empty backing identities are not retained across disable; UUIDs/count and
+// selection survive even after the entire empty native pool is replaced.
+{
+    const store = {}, s = shell(store, 'empties'), first = s.start();
+    first.orderForMonitor(0).insert(1, s.workspaces[1]);
+    s.persistence.flush(); const ids = Array.from(first.orderForMonitor(0).slots, slot => slot.id);
+    first.destroy(); s.workspaces.splice(1);
+    const second = s.start();
+    assert.deepEqual(Array.from(second.orderForMonitor(0).slots, slot => slot.id), ids);
+    assert.equal(second.orderForMonitor(0).slots.length, 2);
+    second.destroy();
+}
+// Legacy v1 records without anchors remain readable. Invalid, oversized or
+// duplicate sequence lists are rejected before restoration touches Shell.
+{
+    const store = {}, s = shell(store, 'anchors'), first = s.start();
+    s.persistence.flush(); first.destroy();
+    const state = JSON.parse(store.text), slot = state.displays[0].slots[0];
+    delete slot.windows; assert(s.parse(JSON.stringify(state)));
+    for (const value of [null, 'bad', [-1], [1.5], [0x100000000], [1, 1], Array.from({length: 65}, (_, i) => i)]) {
+        slot.windows = value; assert.equal(s.parse(JSON.stringify(state)), null);
+    }
+}
 // Save coalesces repeated changes and drains its owned idle on disable. All-
 // displays mode leaves the per-display saved representation untouched.
 {
@@ -204,6 +255,21 @@ function shell(store, epoch) {
     s.flushIdle(); assert.equal(s.sources.size, 0); assert(s.parse(store.text));
     const saved = store.text; s.setEnabled(false); lifecycle._changed(); assert.equal(s.sources.size, 0);
     lifecycle.destroy(); assert.equal(store.text, saved);
+}
+// A settings write failure still cancels persistence idles and releases the
+// entire lifecycle, rather than abandoning signals/overrides after flush().
+{
+    const store = {}, s = shell(store, 'write-failure'), lifecycle = s.start();
+    const persistence = s.persistence;
+    persistence.save(); assert.equal(s.sources.size, 1);
+    persistence.settings.set_string = () => { throw new Error('settings write failed'); };
+    assert.throws(() => lifecycle.destroy(), /settings write failed/);
+    assert.equal(s.sources.size, 0);
+    assert.equal(lifecycle.stacks.size, 0);
+    assert.equal(lifecycle.windows.size, 0);
+    assert.equal(lifecycle.resolver, null);
+    assert.equal(persistence.workspaceBindings, null);
+    assert.equal(persistence.settings, null);
 }
 // Loading Orchard in all-displays mode must defer, not discard, the saved
 // per-display layout. The actual settings handler calls _syncMonitors() when

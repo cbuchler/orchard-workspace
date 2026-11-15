@@ -11,7 +11,6 @@ export class WindowActivation {
         this._configuration = configuration;
         this._resolver = resolver;
         this._overrides = new MethodOverrides();
-        this._enabled = false;
     }
 
     enable() {
@@ -36,7 +35,6 @@ export class WindowActivation {
                 return activation._run(target, () => original.apply(this, args));
             });
         }
-        this._enabled = true;
     }
 
     _appTarget(window) {
@@ -57,7 +55,7 @@ export class WindowActivation {
 
     _run(window, callback) {
         this._configuration.conditionallyEnableAutomaticSwitching();
-        if (!this._enabled || !this._configuration.automaticSwitchingIsEnabled() ||
+        if (!this._configuration.automaticSwitchingIsEnabled() ||
             !window?.get_workspace())
             return callback();
 
@@ -81,18 +79,21 @@ export class WindowActivation {
         root.foreach_transient(transient => { family.add(transient); return true; });
         const resolver = this._resolver;
         const previous = resolver.activation;
-        resolver.activation = {monitor, family};
+        const context = {monitor, family};
+        resolver.activation = context;
         try {
             return callback();
         } finally {
             // No token survives a rejected/stale activation or an exception.
-            resolver.activation = this._enabled ? previous : null;
+            if (resolver.activation === context) resolver.activation = previous;
         }
     }
 
     destroy() {
-        this._enabled = false;
         this._overrides.clear();
         this._resolver.activation = null;
+        this._configuration = null;
+        this._resolver = null;
+        this._overrides = null;
     }
 }

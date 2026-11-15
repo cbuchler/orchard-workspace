@@ -16,7 +16,9 @@ source paths and SHA-256 hashes. It contains the major-release floors (50.0 and
 51.0) and audited maintenance endpoints (50.6 and 51.1). The GitHub Actions matrix
 runs all JavaScript source/model suites against each exact version, without
 relying on a runner's installed Shell. Reports retain fixture provenance and
-each test's output. CI also checks syntax, schemas and release-monitor behavior.
+each test's output. CI also checks ESLint, syntax, schemas and release-monitor behavior.
+Lint uses pinned development dependencies installed from `package-lock.json`;
+run `npm ci --ignore-scripts && npm run lint` locally with Node.js 24 or later.
 
 Run all locked versions locally:
 

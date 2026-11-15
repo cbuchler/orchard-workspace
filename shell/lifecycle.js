@@ -438,26 +438,29 @@ export class LogicalWorkspaceLifecycle {
         this.persistence?.save();
     }
 
-    destroy() {
-        this.persistence?.destroy();
-        this.persistence = null;
-        for (const source of this.pending) GLib.source_remove(source);
-        this.pending.clear();
-        for (const state of this.windows.values()) {
-            for (const id of state.signals) state.window.disconnect(id);
+    destroy({saveLayout = true} = {}) {
+        try {
+            this.persistence?.destroy({save: saveLayout});
+        } finally {
+            this.persistence = null;
+            for (const source of this.pending) GLib.source_remove(source);
+            this.pending.clear();
+            for (const state of this.windows.values()) {
+                for (const id of state.signals) state.window.disconnect(id);
+            }
+            this.windows.clear();
+            for (const [object, id] of this.signals) object.disconnect(id);
+            this.signals = [];
+            this.overrides.clear();
+            // Do not remove Meta.Workspaces or relocate any windows on disable.
+            this.stacks.clear();
+            this.overview = null;
+            this.animation = null;
+            this.forcedMonitor = null;
+            this.pendingActivation = null;
+            this.resolver.navigation = null;
+            this.configuration = null;
+            this.resolver = null;
         }
-        this.windows.clear();
-        for (const [object, id] of this.signals) object.disconnect(id);
-        this.signals = [];
-        this.overrides.clear();
-        // Do not remove Meta.Workspaces or relocate any windows on disable.
-        this.stacks.clear();
-        this.overview = null;
-        this.animation = null;
-        this.forcedMonitor = null;
-        this.pendingActivation = null;
-        this.resolver.navigation = null;
-        this.configuration = null;
-        this.resolver = null;
     }
 }

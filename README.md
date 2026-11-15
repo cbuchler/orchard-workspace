@@ -63,7 +63,7 @@ GNOME may focus a newer transient window instead of the requested app window. Or
 
 ### Saved desktop layouts
 
-During the same Shell session, Orchard reconnects surviving workspace objects to their saved desktop UUIDs, even if GNOME renumbers them. If GNOME prunes an empty workspace while Orchard is disabled, Orchard creates a replacement. A native workspace selection made while Orchard is disabled takes priority over the former saved selection; existing windows stay where GNOME placed them.
+During the same Shell session, Orchard uses saved window sequence numbers to reconnect occupied desktops to their UUIDs, even if GNOME renumbers the native workspaces. Disable releases all runtime object bindings. Empty desktop UUIDs, order and count survive, but an empty desktop may receive a different native backing workspace after re-enable. Closed, moved or split window groups fall back to the current occupied layout. A native workspace selection made while Orchard is disabled takes priority over the former saved selection; restoration never moves windows.
 
 After logout/login, compositor objects and app-to-desktop associations are new. Orchard restores the selected desktop UUID on the current workspace, assigns the remaining occupied workspaces to saved desktop positions in GNOME's current order, then rebuilds empty desktops. Additional occupied workspaces are retained. This restores the desktop list without moving windows to guess their old associations. A saved empty desktop may receive newly launched or session-restored windows when their current placement takes priority.
 
@@ -146,6 +146,8 @@ The other keys are `active-monitor-only`, `switch-active-display-previous`, and 
 | `dist/` | Generated extension ZIPs; ignored by Git |
 
 ## Tests
+
+For JavaScript linting, use Node.js 24 or later and run `npm ci --ignore-scripts` followed by `npm run lint`. CI applies ESLint's recommended correctness rules, unused-variable checks and a 200-character line limit to every shipped JavaScript file. These dependencies are development tools; the extension runtime needs no npm packages. See [code practices and verification](docs/CODE_PRACTICES.md).
 
 Run commands from the repository root. These tests need only Node.js and use its built-in modules:
 

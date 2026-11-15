@@ -34,26 +34,26 @@ const REMOVE = 'remove-active-display-workspace';
 export default class SwitchWorkspacesExtension extends Extension {
     enable() {
         assertShellCompatibility(this.metadata);
-        const settings = this.getSettings();
-        const configuration = new ConfigurationService(settings);
-        const resolver = new MonitorResolver();
-        configuration.conditionallyEnableAutomaticSwitching();
-        const lifecycle = new LogicalWorkspaceLifecycle(configuration, resolver);
-        lifecycle.initialize();
-        lifecycle.persistence = new LogicalLayoutPersistence(lifecycle, settings);
-        lifecycle.persistence.restore();
-        const animation = new MonitorWorkspaceAnimation(
-            Main.wm._workspaceAnimation, configuration, resolver, lifecycle);
-        const overview = new OverviewWorkspaceIsolation(configuration, resolver, lifecycle);
-        const switcher = new WorkspaceSwitcher(configuration, resolver, animation, overview, lifecycle);
-        lifecycle.overview = overview;
-        lifecycle.animation = animation;
-        const activation = new WindowActivation(configuration, resolver);
-        const shortcuts = new NativeWorkspaceShortcuts(switcher);
-        const compatibility = new WorkspaceStackingCompatibility();
-        this._state = {settings, configuration, animation, overview, switcher, lifecycle, activation, shortcuts, compatibility, signals: [], bindings: []};
-
+        const state = {signals: [], bindings: []};
+        this._state = state;
         try {
+            const settings = state.settings = this.getSettings();
+            const configuration = state.configuration = new ConfigurationService(settings);
+            const resolver = new MonitorResolver();
+            configuration.conditionallyEnableAutomaticSwitching();
+            const lifecycle = state.lifecycle = new LogicalWorkspaceLifecycle(configuration, resolver);
+            lifecycle.initialize();
+            lifecycle.persistence = new LogicalLayoutPersistence(lifecycle, settings);
+            lifecycle.persistence.restore();
+            const animation = state.animation = new MonitorWorkspaceAnimation(
+                Main.wm._workspaceAnimation, configuration, resolver, lifecycle);
+            const overview = state.overview = new OverviewWorkspaceIsolation(configuration, resolver, lifecycle);
+            const switcher = state.switcher = new WorkspaceSwitcher(configuration, resolver, animation, overview, lifecycle);
+            lifecycle.overview = overview;
+            lifecycle.animation = animation;
+            const activation = state.activation = new WindowActivation(configuration, resolver);
+            const shortcuts = state.shortcuts = new NativeWorkspaceShortcuts(switcher);
+            const compatibility = state.compatibility = new WorkspaceStackingCompatibility();
             compatibility.enable();
             activation.enable();
             animation.enable();
@@ -92,12 +92,16 @@ export default class SwitchWorkspacesExtension extends Extension {
             lifecycle.enable();
             shortcuts.enable();
         } catch (error) {
-            this.disable();
+            this._clearState(false);
             throw error;
         }
     }
 
     disable() {
+        this._clearState(true);
+    }
+
+    _clearState(saveLayout) {
         if (!this._state) return;
         const state = this._state;
         this._state = null;
@@ -105,11 +109,14 @@ export default class SwitchWorkspacesExtension extends Extension {
             object.disconnect(id);
         for (const name of state.bindings)
             Main.wm.removeKeybinding(name);
-        state.shortcuts.destroy();
-        state.activation.destroy();
-        state.lifecycle.destroy();
-        state.overview.destroy();
-        state.animation.destroy();
-        state.compatibility.destroy();
+        state.shortcuts?.destroy();
+        state.activation?.destroy();
+        try {
+            state.lifecycle?.destroy({saveLayout});
+        } finally {
+            state.overview?.destroy();
+            state.animation?.destroy();
+            state.compatibility?.destroy();
+        }
     }
 }

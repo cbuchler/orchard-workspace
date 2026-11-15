@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- Release persistence caches and activation references on disable. Preserve occupied desktop UUID associations using saved, Shell-scoped window sequence numbers; empty desktop UUIDs/order/count remain persistent without retaining native workspace identities while disabled. Roll back partial startup without overwriting saved layouts, and finish cleanup if saving fails.
 - Preserve keyboard focus on the fullscreen window or its focused dialog when entering and leaving its temporary desktop, so a second F11 reaches the same application. Background fullscreen changes do not explicitly take focus from another window.
 - Insert temporary fullscreen desktops immediately after their stable origin, preserving nested return paths and unrelated desktop order.
 - Animate ordinary Orchard navigation and selected desktop creation consistently with native shortcuts. Preserve requested moving-window ownership during interrupted slides and expire unconsumed ownership.
@@ -25,6 +26,7 @@
 
 ### Tests
 
+- Add pinned ESLint checks locally and in CI, startup fault injection, persistence-cache cleanup and settings-write failure coverage. All 72 pinned source/model checks and 48 focused real-window scenarios pass for this hardening; see [code-practices evidence and limits](docs/CODE_PRACTICES.md).
 - Add persistence/reconciliation model coverage for renumbering, pruned empty desktops, new-session occupancy and selected UUIDs, absent/ambiguous display identities, fullscreen exclusion, corrupt/unsupported state and owned save-idle cleanup. Live restart/reconnect acceptance remains separate.
 - Add a reusable isolated real-window compositor harness with private settings/bus, source manifests, fixture validation, per-frame animation samples, PNG captures and explicit failure reports.
 - Pass 40 final integrated real-window checks across GNOME 50.1/51.0, both displays and fixed/dynamic modes, including automatic persistence, extension/new-Shell restarts and fullscreen mode transitions. Retain shutdown diagnostics and outstanding acceptance separately in [LIVE_VALIDATION.md](docs/LIVE_VALIDATION.md).

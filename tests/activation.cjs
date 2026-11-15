@@ -195,16 +195,24 @@ for (const mode of ['visible', 'reject', 'fail', 'emptyApp', 'foreignWindow', 'n
     assert.equal(s.resolver.activationMonitor, null, mode);
     s.activation.destroy();
 }
-// Nested ownership and disable during a call cannot retain the inner context.
-{
+// Nested ownership and disable during either call cannot retain a context.
+for (const nestedDisable of [false, true]) {
     const s = setup();
     s.activation._run(s.target, () => {
         assert.equal(s.resolver.resolve(), 1);
-        s.activation._run(s.other, () => assert.equal(s.resolver.resolve(), 0));
-        assert.equal(s.resolver.resolve(), 1);
-        s.activation.destroy();
+        s.activation._run(s.other, () => {
+            assert.equal(s.resolver.resolve(), 0);
+            if (nestedDisable) s.activation.destroy();
+        });
+        if (!nestedDisable) {
+            assert.equal(s.resolver.resolve(), 1);
+            s.activation.destroy();
+        }
     });
     assert.equal(s.resolver.activationMonitor, null);
+    assert.equal(s.activation._configuration, null);
+    assert.equal(s.activation._resolver, null);
+    assert.equal(s.activation._overrides, null);
 }
 // Cleanup must preserve native return values and detach retained wrappers.
 {
